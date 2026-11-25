@@ -1,0 +1,39 @@
+services:
+  bot-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: eirayuki:latest
+    container_name: eirayuki-prod
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    volumes:
+      - ./storage:/app/storage
+      - ./assets:/app/assets
+      - ./config:/app/config
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Jakarta
+
+  bot-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    image: eirayuki:dev
+    container_name: eirayuki-dev
+    command: npm run dev
+    tty: true
+    stdin_open: true
+    volumes:
+      - .:/app
+      - /app/node_modules
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      TZ: Asia/Jakarta

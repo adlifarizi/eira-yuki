@@ -1,0 +1,37 @@
+[
+  {
+    "id": "confused_huh",
+    "file": "confused/huh.webp",
+    "text": "Huh?",
+    "context": "Perplexed, dumbfounded, or reacting to absurd statements",
+    "tags": ["confused", "questioning"]
+  },
+  {
+    "id": "speechless_dots",
+    "file": "speechless_dots.webp",
+    "text": "...",
+    "context": "Silent deadpan stare when dumbfounded or quietly judging",
+    "tags": ["speechless", "neutral", "annoyed"]
+  },
+  {
+    "id": "no_disapprove",
+    "file": "no_disapprove.webp",
+    "text": "NO!",
+    "context": "Strict refusal or rejection of unreasonable demands",
+    "tags": ["no", "rejection", "annoyed"]
+  },
+  {
+    "id": "smug_smirk",
+    "file": "smug/smirk.webp",
+    "text": null,
+    "context": "Subtle smirk with half-closed eyes, dry pride or teasing",
+    "tags": ["smug", "tease"]
+  },
+  {
+    "id": "blush_shy",
+    "file": "blush_shy.webp",
+    "text": null,
+    "context": "Slight blush looking away, flustered when praised or affection is high",
+    "tags": ["blush", "shy", "happy"]
+  }
+]

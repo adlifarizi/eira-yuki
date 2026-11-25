@@ -1,0 +1,37 @@
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependencies
+node_modules/
+
+# Build files
+dist/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Storage and session data (contains private sessions and database)
+storage/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Config
+config/config.yaml
+
+# AI Tooling & Internal Specs
+.gemini/
+.codegraph/
+AGENTS.md
+GEMINI.md
+opencode.jsonc
+codegen_instructions.md

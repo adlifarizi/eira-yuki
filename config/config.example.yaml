@@ -1,0 +1,67 @@
+bot:
+  # How Eira should address you (e.g. "Adli", "Farizi", "Master")
+  ownerName: "Adli"
+
+  # Timezone for scheduled tasks, alarms, and conversational clock awareness
+  timezone: "Asia/Jakarta"
+
+  # Locale for natural date/time formatting (e.g. "id-ID", "en-US", "ja-JP")
+  locale: "id-ID"
+
+  # Trigger aliases for directly addressing the bot in group chats
+  aliases:
+    - "eira"
+    - "yuki"
+
+  # Bot owners configured per adapter platform (e.g. whatsapp, discord, telegram, api)
+  owners:
+    # WhatsApp phone numbers of the bot owners (without '+' or leading zero, e.g. "628123456789")
+    whatsapp:
+      - "628xxxxxxxxxx"
+    # Discord user snowflake IDs (e.g. "123456789012345678")
+    # discord:
+    #   - "123456789012345678"
+    # Telegram user IDs or usernames (e.g. "123456789" or "username")
+    # telegram:
+    #   - "123456789"
+    # Generic or API clients (e.g. "admin", "user_123")
+    # api:
+    #   - "admin"
+
+adapters:
+  whatsapp:
+    enabled: true
+    # Use WhatsApp 8-digit pairing code instead of scanning QR code in terminal
+    usePairingCode: true
+    # Phone number of the bot (the WhatsApp SIM card hosting Eira Yuki, e.g. "628xxxxxxxxxx")
+    phoneNumber: "628xxxxxxxxxx"
+
+ai:
+  # Best free model with 500 RPD quota and full tool calling support
+  model: "gemini-3.1-flash-lite"
+
+  # Secondary free model (500 RPD quota) for multi-hop load balancing
+  fallbackModel: "gemini-3.5-flash-lite"
+
+  # Multi-hop / ReAct loop settings
+  enableMultiHop: true
+  maxHops: 4
+  multiHopTools:
+    - "web_search"
+    - "read_url"
+    - "set_reminder"
+    - "list_reminders"
+    - "cancel_reminder"
+
+  # Disabled by default because Gemini 3+ has 0 RPD for Google Search Grounding on free tier
+  enableSearchGrounding: false
+
+  # Multi-turn conversational memory limit (number of recent messages in working context)
+  maxHistoryLimit: 30
+  temperature: 0.7
+  maxOutputTokens: 800
+
+  # Decision model and threshold for reflex action omission evaluation
+  evaluator:
+    model: "gemini-decision-1"
+    threshold: 0.65

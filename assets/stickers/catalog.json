@@ -1,0 +1,23 @@
+[
+  {
+    "id": "confused",
+    "file": "confused.webp",
+    "text": null,
+    "context": "Perplexed, dumbfounded, questioning, or reacting with disbelief to absurd or nonsensical statements",
+    "tags": ["confused", "huh", "questioning", "disbelief", "confused_huh"]
+  },
+  {
+    "id": "no_disapprove",
+    "file": "no_disapprove.webp",
+    "text": "NO!",
+    "context": "Strict refusal, objection, or firmly stopping unreasonable or troublesome requests",
+    "tags": ["no", "disapprove", "refusal", "annoyed", "stop"]
+  },
+  {
+    "id": "speechless_dots",
+    "file": "speechless_dots.webp",
+    "text": "...",
+    "context": "Silent deadpan stare when utterly speechless, bewildered, or quietly judging awkward nonsense",
+    "tags": ["speechless", "neutral", "deadpan", "annoyed", "dots"]
+  }
+]
