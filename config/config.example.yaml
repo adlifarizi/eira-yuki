@@ -61,6 +61,9 @@ ai:
   temperature: 0.7
   maxOutputTokens: 800
 
+  # Evaluate semantic mood every N turns (0 = disabled, 1 = every turn)
+  moodEvaluationInterval: 5
+
   # Decision model and threshold for reflex action omission evaluation
   evaluator:
     model: "gemini-decision-1"

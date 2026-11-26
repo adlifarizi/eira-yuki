@@ -1,10 +1,12 @@
 import { Logger } from 'pino';
 import { LLMProvider } from '../providers';
+import { PersonaBuilder } from './persona-builder';
 import { InteractionContext, MoodDelta, MoodEvaluator } from './types';
 
 export class SemanticMoodEvaluator implements MoodEvaluator {
   constructor(
     private llmProvider: LLMProvider,
+    private personaBuilder: PersonaBuilder,
     private logger?: Logger
   ) {}
 
@@ -16,14 +18,19 @@ export class SemanticMoodEvaluator implements MoodEvaluator {
 
     const roleGuidance =
       context.senderRole === 'guest'
-        ? 'Sender is a GUEST/STRANGER. You must set "affection": 0 to preserve Eira\'s emotional boundary with strangers.'
+        ? 'Sender is a GUEST/STRANGER. You must set "affection": 0 to preserve the companion\'s emotional boundary with strangers.'
         : 'Sender is the PRIMARY OWNER/MASTER. Affection reflects trust, genuine appreciation, and emotional warmth towards Master.';
 
-    const prompt = `Analyze the emotional and relational impact of this message exchange on Eira Yuki (an autonomous AI companion who is composed, loyal, and observant).
+    const transcript = this.formatExchangeTranscript(context, text);
+    const personaInstruction = this.personaBuilder.getBaseInstruction();
+
+    const prompt = `Analyze the emotional and relational impact of this conversation exchange on the AI companion whose persona is defined below.
+
+COMPANION PERSONA:
+${personaInstruction}
 
 SENDER ROLE: ${context.senderRole.toUpperCase()}
-USER MESSAGE: "${text}"
-${context.assistantText ? `ASSISTANT RESPONSE: "${context.assistantText}"` : ''}
+${transcript}
 
 ${roleGuidance}
 
@@ -58,6 +65,27 @@ Output strictly valid JSON and nothing else:
       this.logger?.debug({ err }, 'Failed to evaluate semantic mood');
       return {};
     }
+  }
+
+  private formatExchangeTranscript(context: InteractionContext, currentUserText: string): string {
+    const lines: string[] = [];
+
+    if (context.recentHistory && context.recentHistory.length > 0) {
+      lines.push('RECENT CONVERSATION:');
+      for (const msg of context.recentHistory) {
+        const speaker = msg.role === 'user' ? 'USER' : 'ASSISTANT';
+        lines.push(`${speaker}: "${msg.content}"`);
+      }
+      lines.push('');
+      lines.push('LATEST EXCHANGE:');
+    }
+
+    lines.push(`USER MESSAGE: "${currentUserText}"`);
+    if (context.assistantText) {
+      lines.push(`ASSISTANT RESPONSE: "${context.assistantText}"`);
+    }
+
+    return lines.join('\n');
   }
 
   private parseDelta(rawText: string, role: string): MoodDelta {

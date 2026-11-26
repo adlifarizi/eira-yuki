@@ -98,7 +98,10 @@ export function createEiraCore(
   );
 
   const moodService = new MoodService(db, logger);
-  const moodEvaluator = new SemanticMoodEvaluator(llmProvider, logger);
+  const moodEvaluator =
+    config.ai.moodEvaluationInterval > 0
+      ? new SemanticMoodEvaluator(llmProvider, personaBuilder, logger)
+      : undefined;
   const decisionProvider = new GeminiDecisionProvider({
     apiKey: config.env.geminiApiKey,
     modelName: config.ai.evaluator.model,
@@ -148,6 +151,7 @@ export function createEiraCore(
     memoryConsolidator,
     moodService,
     moodEvaluator,
+    moodEvaluationInterval: config.ai.moodEvaluationInterval,
     stickerCatalog,
     consolidationThreshold: Math.floor(config.ai.maxHistoryLimit / 2),
     maxHistoryLimit: config.ai.maxHistoryLimit,

@@ -3,7 +3,7 @@ import { IncomingMessage } from '../types';
 import { ChatMessage } from '../providers';
 import { CoreTool, ToolDefinition, ToolRegistry } from '../tools';
 import { PersonaBuilder, MoodService } from '../persona';
-import { MemoryService } from '../memory';
+import { MemoryService, buildGuestSenderKey } from '../memory';
 import { TaskService } from '../scheduler';
 const RECENT_EVENTS_WINDOW_MS = 3 * 60 * 60 * 1000;
 export const DEFAULT_MAX_HISTORY_LIMIT = 30;
@@ -92,10 +92,15 @@ export class ContextAssembler {
     let conversationHistory: ChatMessage[] = [];
     if (this.options.memoryService) {
       try {
+        const guestSenderKey =
+          incoming.role === 'guest'
+            ? buildGuestSenderKey(incoming.senderId, incoming.adapter)
+            : undefined;
         const memoryContext = await this.options.memoryService.buildMemoryContext(
           incoming.text,
           incoming.role,
-          incoming.chatId
+          incoming.chatId,
+          guestSenderKey
         );
         if (memoryContext) {
           sections.push(memoryContext);

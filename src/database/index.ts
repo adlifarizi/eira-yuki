@@ -31,11 +31,12 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS core_facts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity TEXT NOT NULL,
+    sender_id TEXT,
     category TEXT NOT NULL,
     fact TEXT NOT NULL,
     timestamp INTEGER NOT NULL
   );
-  CREATE INDEX IF NOT EXISTS idx_core_facts_entity ON core_facts (entity);
+  CREATE INDEX IF NOT EXISTS idx_core_facts_entity_sender ON core_facts (entity, sender_id);
 
   CREATE TABLE IF NOT EXISTS episodic_memories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

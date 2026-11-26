@@ -1,11 +1,14 @@
 import { Logger } from 'pino';
 import { IncomingMessage, CoreResponse, ResponseAttachment, StickerResolver } from '../types';
+import { ChatMessage } from '../providers';
 import { MoodService, MoodEvaluator } from '../persona';
 import { MemoryService, MemoryConsolidator } from '../memory';
 import { ContextAssembler, AssembledAgentContext, DEFAULT_MAX_HISTORY_LIMIT } from './context-assembler';
 import { ExecutionLoop, ExecutionLoopResult } from './execution-loop';
 import { ReflexionGuard } from './reflexion-guard';
 import { isStickerToolResult, SEND_STICKER_TOOL_NAME } from '../tools/sticker-tool';
+
+export const DEFAULT_MOOD_EVALUATION_INTERVAL = 5;
 
 /**
  * Configuration options and dependencies injected into EiraAgent.
@@ -19,6 +22,8 @@ export interface EiraAgentOptions {
   memoryConsolidator?: MemoryConsolidator;
   moodService?: MoodService;
   moodEvaluator?: MoodEvaluator;
+  /** Number of turns between background semantic mood evaluations (0 disables evaluation). */
+  moodEvaluationInterval?: number;
   stickerCatalog?: StickerResolver;
   consolidationThreshold?: number;
   maxHistoryLimit?: number;
@@ -33,6 +38,7 @@ export class EiraAgent {
   private contextAssembler: ContextAssembler;
   private executionLoop: ExecutionLoop;
   private reflexionGuard: ReflexionGuard;
+  private moodTurnCounters = new Map<string, number>();
 
   constructor(private options: EiraAgentOptions) {
     this.contextAssembler = options.contextAssembler;
@@ -56,7 +62,7 @@ export class EiraAgent {
     const loopResult = await this.executionLoop.run(context, incoming);
     const guardedResult = await this.reflexionGuard.evaluate(incoming, context, loopResult);
     const finalResult = await this.synthesizeIfEmpty(context, guardedResult);
-    await this.persistAndConsolidate(incoming, finalResult.text);
+    await this.persistAndConsolidate(incoming, finalResult.text, context.conversationHistory);
     const attachment = this.resolveAttachment(finalResult);
 
     return {
@@ -97,7 +103,11 @@ export class EiraAgent {
     }
   }
 
-  private async persistAndConsolidate(incoming: IncomingMessage, text: string): Promise<void> {
+  private async persistAndConsolidate(
+    incoming: IncomingMessage,
+    text: string,
+    conversationHistory: ChatMessage[]
+  ): Promise<void> {
     if (!this.options.memoryService || !text?.trim()) return;
 
     try {
@@ -122,21 +132,54 @@ export class EiraAgent {
           });
       }
 
-      if (this.options.moodEvaluator && this.options.moodService && userContent) {
-        this.options.moodEvaluator
-          .evaluate({
-            userText: userContent,
-            assistantText: text.trim(),
-            senderRole: incoming.role,
-          })
-          .then((delta) => this.options.moodService?.applyDelta(delta, incoming.role))
-          .catch((err) => {
-            this.options.logger?.debug({ err }, 'Asynchronous mood update failed');
-          });
+      if (userContent) {
+        this.scheduleMoodEvaluation(incoming, userContent, text.trim(), conversationHistory);
       }
     } catch (err) {
       this.options.logger?.warn({ err }, 'Failed to persist or consolidate conversation turn');
     }
+  }
+
+  /**
+   * Throttles background mood evaluation to run once every N turns per chat,
+   * passing the skipped turns from conversationHistory so mood reflects the full window.
+   */
+  private scheduleMoodEvaluation(
+    incoming: IncomingMessage,
+    userContent: string,
+    assistantText: string,
+    conversationHistory: ChatMessage[]
+  ): void {
+    if (!this.options.moodEvaluator || !this.options.moodService) return;
+
+    const interval = this.options.moodEvaluationInterval ?? DEFAULT_MOOD_EVALUATION_INTERVAL;
+    if (interval <= 0) return;
+
+    const nextCount = (this.moodTurnCounters.get(incoming.chatId) ?? 0) + 1;
+    if (nextCount < interval) {
+      this.moodTurnCounters.set(incoming.chatId, nextCount);
+      return;
+    }
+
+    this.moodTurnCounters.set(incoming.chatId, 0);
+
+    const priorMessageCount = (interval - 1) * 2;
+    const recentHistory =
+      priorMessageCount > 0 && conversationHistory.length > 0
+        ? conversationHistory.slice(-priorMessageCount)
+        : undefined;
+
+    this.options.moodEvaluator
+      .evaluate({
+        userText: userContent,
+        assistantText,
+        senderRole: incoming.role,
+        recentHistory,
+      })
+      .then((delta) => this.options.moodService?.applyDelta(delta, incoming.role))
+      .catch((err) => {
+        this.options.logger?.debug({ err }, 'Asynchronous mood update failed');
+      });
   }
 
   /**

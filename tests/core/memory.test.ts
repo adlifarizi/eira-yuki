@@ -66,6 +66,21 @@ describe('Memory System', () => {
       expect(found?.category).toBe('preference');
     });
 
+    it('isolates guest core facts by senderId and prevents unscoped guest leakage', async () => {
+      await memoryService.addCoreFact('guest', 'biography', 'Lives in Bandung', 'whatsapp:guest-1');
+      await memoryService.addCoreFact('guest', 'biography', 'Lives in Tokyo', 'discord:guest-1');
+      await memoryService.addCoreFact('guest', 'preference', 'Likes matcha', 'whatsapp:guest-2');
+
+      const waGuest1 = await memoryService.getCoreFacts('guest', 'whatsapp:guest-1');
+      expect(waGuest1.map((f) => f.fact)).toEqual(['Lives in Bandung']);
+
+      const discordGuest1 = await memoryService.getCoreFacts('guest', 'discord:guest-1');
+      expect(discordGuest1.map((f) => f.fact)).toEqual(['Lives in Tokyo']);
+
+      const unscoped = await memoryService.getCoreFacts('guest');
+      expect(unscoped).toEqual([]);
+    });
+
     it('adds episodic memory and searches via vector similarity', async () => {
       const testChatId = `session-${Date.now()}`;
       await memoryService.addEpisodicMemory(testChatId, 'Owner mentioned that he really loves coffee');

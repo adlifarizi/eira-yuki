@@ -1,5 +1,5 @@
 import { CoreTool } from './types';
-import { MemoryService } from '../memory';
+import { MemoryService, buildGuestSenderKey } from '../memory';
 
 /**
  * Creates the `remember_fact` tool for persisting core facts or user preferences.
@@ -30,7 +30,9 @@ export function createRememberFactTool(memoryService: MemoryService): CoreTool {
     ownerOnly: false, // Eira can remember facts about anyone, tagged with their role
     execute: async (params, context) => {
       const entity = context.role === 'owner' ? 'owner' : 'guest';
-      const factId = await memoryService.addCoreFact(entity, params.category, params.fact);
+      const senderId =
+        entity === 'guest' ? buildGuestSenderKey(context.senderId, context.adapter) : undefined;
+      const factId = await memoryService.addCoreFact(entity, params.category, params.fact, senderId);
       return {
         status: 'success',
         factId,

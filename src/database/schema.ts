@@ -11,6 +11,7 @@ export const aiChatHistory = sqliteTable('ai_chat_history', {
 export const coreFacts = sqliteTable('core_facts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   entity: text('entity').notNull(), // 'owner' | 'eira' | 'guest'
+  senderId: text('sender_id'), // Scoped identifier (e.g. "whatsapp:123456") for 'guest' facts; null for 'owner'/'eira'
   category: text('category').notNull(), // 'preference' | 'biography' | 'schedule' | 'relationship' | 'general'
   fact: text('fact').notNull(),
   timestamp: integer('timestamp').notNull(),

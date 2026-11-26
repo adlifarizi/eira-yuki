@@ -91,6 +91,7 @@ const ConfigSchema = z.object({
     maxHistoryLimit: z.number().int().default(30),
     temperature: z.number().default(0.7),
     maxOutputTokens: z.number().int().default(800),
+    moodEvaluationInterval: z.number().int().min(0).default(5),
     evaluator: z
       .object({
         model: z.string().default('gemini-decision-1'),

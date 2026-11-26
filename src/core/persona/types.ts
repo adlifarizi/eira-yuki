@@ -1,4 +1,5 @@
 import { UserRole } from '../types';
+import { ChatMessage } from '../providers/types';
 
 export interface MoodState {
   energy: number;
@@ -19,6 +20,8 @@ export interface InteractionContext {
   userText: string;
   assistantText?: string;
   senderRole: UserRole;
+  /** Optional prior conversation messages leading up to the current turn for multi-turn mood evaluation. */
+  recentHistory?: ChatMessage[];
 }
 
 export interface MoodEvaluator {

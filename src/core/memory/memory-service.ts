@@ -1,4 +1,4 @@
-import { eq, desc, or, count } from 'drizzle-orm';
+import { eq, and, desc, or, count } from 'drizzle-orm';
 import { AppDatabase } from '../../database';
 import { aiChatHistory, coreFacts, episodicMemories } from '../../database/schema';
 import { cosineSimilarity } from './similarity';
@@ -7,6 +7,16 @@ import { ChatMessage, ChatRole, EmbeddingProvider } from '../providers';
 
 const MIN_MEMORY_SIMILARITY_SCORE = 0.15;
 const DEFAULT_CHAT_HISTORY_LIMIT = 30;
+
+/**
+ * Builds an adapter-namespaced sender key (e.g. "whatsapp:628123") so guest facts
+ * remain isolated across users and never collide across different messaging platforms.
+ */
+export function buildGuestSenderKey(senderId: string, adapter?: string): string {
+  const trimmedId = senderId.trim();
+  const trimmedAdapter = adapter?.trim();
+  return trimmedAdapter ? `${trimmedAdapter}:${trimmedId}` : trimmedId;
+}
 
 /**
  * Service managing conversational memory, persistent core facts, and episodic memory search.
@@ -101,15 +111,19 @@ export class MemoryService {
   }
 
   /**
-   * Store a persistent core fact about Owner or Eira.
+   * Store a persistent core fact about Owner, Eira, or a specific Guest.
+   * Guest facts are scoped by `senderId` to prevent cross-guest bleed.
    */
   async addCoreFact(
     entity: 'owner' | 'eira' | 'guest',
     category: string,
-    fact: string
+    fact: string,
+    senderId?: string
   ): Promise<number> {
+    const scopedSenderId = entity === 'guest' ? (senderId?.trim() || null) : null;
     const result = await this.db.insert(coreFacts).values({
       entity,
+      senderId: scopedSenderId,
       category,
       fact: fact.trim(),
       timestamp: Date.now(),
@@ -119,9 +133,20 @@ export class MemoryService {
   }
 
   /**
-   * Get all persistent core facts.
+   * Get persistent core facts. For 'guest', `senderId` is required so facts
+   * remain isolated per guest; returns an empty array if `senderId` is omitted.
    */
-  async getCoreFacts(entity?: 'owner' | 'eira' | 'guest') {
+  async getCoreFacts(entity?: 'owner' | 'eira' | 'guest', senderId?: string) {
+    if (entity === 'guest') {
+      const trimmedSender = senderId?.trim();
+      if (!trimmedSender) {
+        return [];
+      }
+      return await this.db
+        .select()
+        .from(coreFacts)
+        .where(and(eq(coreFacts.entity, 'guest'), eq(coreFacts.senderId, trimmedSender)));
+    }
     if (entity) {
       return await this.db.select().from(coreFacts).where(eq(coreFacts.entity, entity));
     }
@@ -211,11 +236,16 @@ export class MemoryService {
   /**
    * Formats core facts and relevant episodic memories for injection into system instruction.
    */
-  async buildMemoryContext(query: string, entity: 'owner' | 'guest', chatId?: string): Promise<string> {
+  async buildMemoryContext(
+    query: string,
+    entity: 'owner' | 'guest',
+    chatId?: string,
+    senderId?: string
+  ): Promise<string> {
     const sections: string[] = [];
 
     // 1. Core Profile Facts
-    const facts = await this.getCoreFacts(entity);
+    const facts = await this.getCoreFacts(entity, senderId);
     if (facts.length > 0) {
       const factLines = facts.map((f) => `- [${f.category}] ${f.fact}`);
       sections.push(`[CORE PROFILE FACTS ABOUT ${entity.toUpperCase()}]:\n${factLines.join('\n')}`);

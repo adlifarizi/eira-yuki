@@ -28,7 +28,7 @@ describe('Memory Tools', () => {
     expect(tools.length).toBe(2);
   });
 
-  const createMsg = (role: 'owner' | 'guest'): IncomingMessage => ({
+  const createMsg = (role: 'owner' | 'guest', adapter?: string): IncomingMessage => ({
     id: '1',
     senderId: '123',
     senderName: 'Adli',
@@ -37,10 +37,11 @@ describe('Memory Tools', () => {
     role,
     text: 'test',
     timestamp: Date.now(),
+    adapter,
   });
 
-  it('remember_fact calls addCoreFact with role entity', async () => {
-    const ownerMsg = createMsg('owner');
+  it('remember_fact calls addCoreFact with role entity and undefined senderId for owner', async () => {
+    const ownerMsg = createMsg('owner', 'whatsapp');
     const result = await rememberTool.execute(
       { category: 'preference', fact: 'Enjoys late-night coding' },
       ownerMsg
@@ -49,10 +50,26 @@ describe('Memory Tools', () => {
     expect(mockMemoryService.addCoreFact).toHaveBeenCalledWith(
       'owner',
       'preference',
-      'Enjoys late-night coding'
+      'Enjoys late-night coding',
+      undefined
     );
     expect(result.status).toBe('success');
     expect(result.factId).toBe(42);
+  });
+
+  it('remember_fact scopes guest facts using adapter-namespaced senderId', async () => {
+    const guestMsg = createMsg('guest', 'discord');
+    await rememberTool.execute(
+      { category: 'biography', fact: 'Lives in Bandung' },
+      guestMsg
+    );
+
+    expect(mockMemoryService.addCoreFact).toHaveBeenCalledWith(
+      'guest',
+      'biography',
+      'Lives in Bandung',
+      'discord:123'
+    );
   });
 
   it('recall_memory searches episodic memories and returns matching list', async () => {

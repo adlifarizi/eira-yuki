@@ -705,4 +705,118 @@ describe('EiraAgent', () => {
       expect(mockProvider.generate).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('Mood evaluation throttling', () => {
+    function createMoodTestSetup(moodEvaluationInterval?: number) {
+      const history = [
+        { role: 'user' as const, content: 'turn 1 user' },
+        { role: 'assistant' as const, content: 'turn 1 assistant' },
+        { role: 'user' as const, content: 'turn 2 user' },
+        { role: 'assistant' as const, content: 'turn 2 assistant' },
+      ];
+
+      const mockContextAssembler = {
+        assemble: vi.fn().mockResolvedValue({
+          systemInstruction: 'sys',
+          prompt: 'hello',
+          conversationHistory: history,
+          tools: [],
+        }),
+      } as unknown as ContextAssembler;
+
+      const mockExecutionLoop = {
+        run: vi.fn().mockResolvedValue({
+          text: 'Eira reply',
+          actionsExecuted: [],
+        }),
+      } as unknown as ExecutionLoop;
+
+      const mockReflexionGuard = {
+        evaluate: vi.fn().mockImplementation((_inc, _ctx, res) => Promise.resolve(res)),
+      } as unknown as ReflexionGuard;
+
+      const mockMemoryService = {
+        saveChatMessage: vi.fn().mockResolvedValue(undefined),
+      } as any;
+
+      const mockMoodService = {
+        applyDelta: vi.fn().mockResolvedValue(undefined),
+      } as any;
+
+      const mockMoodEvaluator = {
+        evaluate: vi.fn().mockResolvedValue({ energy: 1 }),
+      };
+
+      const agent = new EiraAgent({
+        contextAssembler: mockContextAssembler,
+        executionLoop: mockExecutionLoop,
+        reflexionGuard: mockReflexionGuard,
+        memoryService: mockMemoryService,
+        moodService: mockMoodService,
+        moodEvaluator: mockMoodEvaluator,
+        moodEvaluationInterval,
+      });
+
+      return { agent, mockMoodEvaluator, mockMoodService };
+    }
+
+    it('evaluates mood only every N turns per chat and includes recentHistory', async () => {
+      const { agent, mockMoodEvaluator, mockMoodService } = createMoodTestSetup(3);
+
+      const makeMsg = (id: string, chatId = 'chat-a'): IncomingMessage => ({
+        id,
+        senderId: '123',
+        senderName: 'Adli',
+        chatId,
+        chatType: 'dm',
+        role: 'owner',
+        text: `message ${id}`,
+        timestamp: Date.now(),
+      });
+
+      await agent.handleMessage(makeMsg('1'));
+      await agent.handleMessage(makeMsg('2'));
+      expect(mockMoodEvaluator.evaluate).not.toHaveBeenCalled();
+
+      // Turn 3 triggers evaluation with prior (3 - 1) * 2 = 4 messages from conversationHistory
+      await agent.handleMessage(makeMsg('3'));
+      await vi.waitFor(() => {
+        expect(mockMoodEvaluator.evaluate).toHaveBeenCalledTimes(1);
+        expect(mockMoodService.applyDelta).toHaveBeenCalledTimes(1);
+      });
+
+      expect(mockMoodEvaluator.evaluate).toHaveBeenCalledWith({
+        userText: 'message 3',
+        assistantText: 'Eira reply',
+        senderRole: 'owner',
+        recentHistory: [
+          { role: 'user', content: 'turn 1 user' },
+          { role: 'assistant', content: 'turn 1 assistant' },
+          { role: 'user', content: 'turn 2 user' },
+          { role: 'assistant', content: 'turn 2 assistant' },
+        ],
+      });
+
+      // Another chat has its own independent counter
+      await agent.handleMessage(makeMsg('4', 'chat-b'));
+      expect(mockMoodEvaluator.evaluate).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables mood evaluation when moodEvaluationInterval is 0', async () => {
+      const { agent, mockMoodEvaluator } = createMoodTestSetup(0);
+
+      await agent.handleMessage({
+        id: '1',
+        senderId: '123',
+        senderName: 'Adli',
+        chatId: 'chat-disabled',
+        chatType: 'dm',
+        role: 'owner',
+        text: 'hello',
+        timestamp: Date.now(),
+      });
+
+      expect(mockMoodEvaluator.evaluate).not.toHaveBeenCalled();
+    });
+  });
 });
