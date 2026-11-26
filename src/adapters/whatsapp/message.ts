@@ -224,9 +224,6 @@ export class MessageHandler {
     const shouldRespond = this.gatekeeper.shouldRespond(preliminaryIncoming, isDirectlyAddressed);
 
     if (!shouldRespond) {
-      this.logger.debug(
-        `[WhatsApp] Ignored message from ${canonicalSenderId} in ${chatId} (gatekeeper: not directly addressed and no alias matched)`
-      );
       return;
     }
 
