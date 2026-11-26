@@ -114,7 +114,7 @@ Eira Yuki enforces strict decoupling between **Intelligence (Core Brain)** and *
 ## Project Structure
 
 ```text
-eirayuki/
+eira-yuki/
 ├── assets/
 │   ├── architecture.svg   # System architecture diagram
 │   └── stickers/          # Local sticker library & catalog.json

@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: eirayuki:latest
-    container_name: eirayuki-prod
+    image: eira-yuki:latest
+    container_name: eira-yuki-prod
     restart: unless-stopped
     tty: true
     stdin_open: true
@@ -23,8 +23,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: builder
-    image: eirayuki:dev
-    container_name: eirayuki-dev
+    image: eira-yuki:dev
+    container_name: eira-yuki-dev
     command: npm run dev
     tty: true
     stdin_open: true
