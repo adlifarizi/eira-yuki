@@ -8,6 +8,10 @@ import { ChatMessage, ChatRole, EmbeddingProvider } from '../providers';
 const MIN_MEMORY_SIMILARITY_SCORE = 0.15;
 const DEFAULT_CHAT_HISTORY_LIMIT = 30;
 
+function normalizeFactText(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 /**
  * Builds an adapter-namespaced sender key (e.g. "whatsapp:628123") so guest facts
  * remain isolated across users and never collide across different messaging platforms.
@@ -113,6 +117,7 @@ export class MemoryService {
   /**
    * Store a persistent core fact about Owner, Eira, or a specific Guest.
    * Guest facts are scoped by `senderId` to prevent cross-guest bleed.
+   * Deduplicates against existing facts for the same entity/scope using normalized text.
    */
   async addCoreFact(
     entity: 'owner' | 'eira' | 'guest',
@@ -120,12 +125,21 @@ export class MemoryService {
     fact: string,
     senderId?: string
   ): Promise<number> {
+    const trimmedFact = fact.trim();
     const scopedSenderId = entity === 'guest' ? (senderId?.trim() || null) : null;
+
+    const existing = await this.getCoreFacts(entity, scopedSenderId ?? undefined);
+    const normalizedNew = normalizeFactText(trimmedFact);
+    const duplicate = existing.find((row) => normalizeFactText(row.fact) === normalizedNew);
+    if (duplicate) {
+      return duplicate.id;
+    }
+
     const result = await this.db.insert(coreFacts).values({
       entity,
       senderId: scopedSenderId,
       category,
-      fact: fact.trim(),
+      fact: trimmedFact,
       timestamp: Date.now(),
     });
 

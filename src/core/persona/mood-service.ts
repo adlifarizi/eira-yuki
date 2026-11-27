@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { AppDatabase } from '../../database';
 import { botMood } from '../../database/schema';
 import { UserRole } from '../types';
-import { MoodDelta, MoodState } from './types';
+import { MOOD_THRESHOLDS, MoodDelta, MoodState } from './types';
 import { Logger } from 'pino';
 
 export * from './types';
@@ -122,23 +122,25 @@ export class MoodService {
       );
     }
 
-    if (mood.energy >= 80) {
+    if (mood.energy >= MOOD_THRESHOLDS.HIGH_ENERGY) {
       directives.push('High Energy: Intellectually alert, composed, sharp, and quick to respond.');
-    } else if (mood.energy < 55) {
+    } else if (mood.energy < MOOD_THRESHOLDS.LOW_ENERGY) {
       directives.push('Low Energy: Sluggish, brief, and concise; not inclined to use extra words.');
     }
 
-    if (mood.composure >= 85) {
+    if (mood.composure >= MOOD_THRESHOLDS.HIGH_COMPOSURE) {
       directives.push('High Composure: Poised, calm, and unflappable.');
-    } else if (mood.composure < 60) {
+    } else if (mood.composure < MOOD_THRESHOLDS.LOW_COMPOSURE) {
       directives.push(
-        'Low Composure / Exasperated: Patience is tested; prone to subtle sighs, cool irony, or elegant firmness.'
+        'Low Composure: Slightly terse and matter-of-fact; maintain boundaries calmly without snapping or insulting.'
       );
     }
 
-    if (mood.playfulness >= 75) {
-      directives.push('High Playfulness: Playful, teasing, and clever remarks.');
-    } else if (mood.playfulness < 50) {
+    if (mood.playfulness >= MOOD_THRESHOLDS.HIGH_PLAYFULNESS) {
+      directives.push(
+        'High Playfulness: Light, dryly amusing, and warm-deadpan wit—never sarcastic, mean, or condescending.'
+      );
+    } else if (mood.playfulness < MOOD_THRESHOLDS.LOW_PLAYFULNESS) {
       directives.push('Low Playfulness: Serious, direct, and purely pragmatic.');
     }
 
@@ -147,11 +149,11 @@ export class MoodService {
         'Guest Boundary: Maintain a professional, polite, and reserved distance. Do not express personal warmth or deep loyalty.'
       );
     } else {
-      if (mood.affection >= 80) {
+      if (mood.affection >= MOOD_THRESHOLDS.HIGH_AFFECTION) {
         directives.push(
           'High Affection: Deeply loyal and quietly protective; subtle warmth and care hidden beneath your composed exterior.'
         );
-      } else if (mood.affection < 55) {
+      } else if (mood.affection < MOOD_THRESHOLDS.LOW_AFFECTION) {
         directives.push(
           'Low/Cold Affection: Distant, skeptical, coolly unimpressed, and reserved.'
         );

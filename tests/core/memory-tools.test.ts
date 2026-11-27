@@ -72,6 +72,36 @@ describe('Memory Tools', () => {
     );
   });
 
+  it('remember_fact stores Eira self-facts with entity "eira" for both owner and guest chats', async () => {
+    const ownerMsg = createMsg('owner', 'whatsapp');
+    const ownerResult = await rememberTool.execute(
+      { subject: 'eira', category: 'preference', fact: 'Prefers roasted oolong tea' },
+      ownerMsg
+    );
+
+    expect(mockMemoryService.addCoreFact).toHaveBeenCalledWith(
+      'eira',
+      'preference',
+      'Prefers roasted oolong tea',
+      undefined
+    );
+    expect(ownerResult.subject).toBe('eira');
+
+    const guestMsg = createMsg('guest', 'whatsapp');
+    const guestResult = await rememberTool.execute(
+      { subject: 'eira', category: 'preference', fact: 'Enjoys rainy afternoons' },
+      guestMsg
+    );
+
+    expect(mockMemoryService.addCoreFact).toHaveBeenCalledWith(
+      'eira',
+      'preference',
+      'Enjoys rainy afternoons',
+      undefined
+    );
+    expect(guestResult.subject).toBe('eira');
+  });
+
   it('recall_memory searches episodic memories and returns matching list', async () => {
     const msg = createMsg('owner');
     const result = await recallTool.execute({ query: 'kopi' }, msg);

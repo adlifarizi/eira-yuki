@@ -66,6 +66,21 @@ describe('Memory System', () => {
       expect(found?.category).toBe('preference');
     });
 
+    it('deduplicates core facts with normalized identical text for the same entity', async () => {
+      const uniqueFact = `Likes quiet rainy nights ${Date.now()}`;
+      const firstId = await memoryService.addCoreFact('eira', 'preference', uniqueFact);
+      const duplicateId = await memoryService.addCoreFact(
+        'eira',
+        'preference',
+        `  ${uniqueFact.toLowerCase()}  `
+      );
+
+      expect(duplicateId).toBe(firstId);
+      const eiraFacts = await memoryService.getCoreFacts('eira');
+      const matches = eiraFacts.filter((f) => f.fact.toLowerCase() === uniqueFact.toLowerCase());
+      expect(matches.length).toBe(1);
+    });
+
     it('isolates guest core facts by senderId and prevents unscoped guest leakage', async () => {
       await memoryService.addCoreFact('guest', 'biography', 'Lives in Bandung', 'whatsapp:guest-1');
       await memoryService.addCoreFact('guest', 'biography', 'Lives in Tokyo', 'discord:guest-1');

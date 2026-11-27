@@ -15,6 +15,12 @@ export function createRememberFactTool(memoryService: MemoryService): CoreTool {
     parameters: {
       type: 'object',
       properties: {
+        subject: {
+          type: 'string',
+          enum: ['user', 'eira'],
+          description:
+            'Target of the fact: "user" (default, about the person talking) or "eira" (strictly Eira\'s own newly expressed preference, hobby, or habit—NEVER store facts about the owner under "eira").',
+        },
         category: {
           type: 'string',
           description:
@@ -27,15 +33,19 @@ export function createRememberFactTool(memoryService: MemoryService): CoreTool {
       },
       required: ['category', 'fact'],
     },
-    ownerOnly: false, // Eira can remember facts about anyone, tagged with their role
+    ownerOnly: false, // Eira can remember facts about anyone or herself, scoped appropriately
+    operationalDirective:
+      'Whenever you spontaneously express or establish a new personal preference, hobby, dislike, or habit of your own in conversation, persist it with subject="eira" so your identity stays consistent across future chats. Never store owner information under subject="eira".',
     execute: async (params, context) => {
-      const entity = context.role === 'owner' ? 'owner' : 'guest';
+      const entity =
+        params.subject === 'eira' ? 'eira' : context.role === 'owner' ? 'owner' : 'guest';
       const senderId =
         entity === 'guest' ? buildGuestSenderKey(context.senderId, context.adapter) : undefined;
       const factId = await memoryService.addCoreFact(entity, params.category, params.fact, senderId);
       return {
         status: 'success',
         factId,
+        subject: entity,
         remembered: params.fact,
         category: params.category,
       };
