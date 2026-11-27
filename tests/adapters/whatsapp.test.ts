@@ -543,4 +543,45 @@ describe('MessageHandler Security & Integration', () => {
       );
     });
   });
+
+  describe('Multi-Bubble Pacing & Typing Tempo', () => {
+    it('sends multi-bubble group replies with quoted only on the first bubble, composing pause between bubbles, and references on the last bubble', async () => {
+      const mockAgent = {
+        handleMessage: vi.fn().mockResolvedValue({
+          text: 'Baik, saya paham.\n\nIni informasi yang Anda minta.',
+          sources: [{ title: 'Example', url: 'https://example.com' }],
+        }),
+      } as unknown as EiraAgent;
+
+      const sleepSpy = vi.fn().mockResolvedValue(undefined);
+      const handler = new MessageHandler(logger, mockConfig, mockAgent, gatekeeper, sleepSpy);
+      const sock = createMockSocket() as any;
+
+      const groupMsg = {
+        key: { remoteJid: 'group123@g.us', participant: '628111222@s.whatsapp.net', id: 'grp-pace' },
+        pushName: 'Adli',
+        message: { conversation: 'Eira cek ini' },
+      } as any;
+
+      await handler.handle(sock, groupMsg);
+
+      expect(sock.sendMessage).toHaveBeenCalledTimes(2);
+      expect(sock.sendMessage).toHaveBeenNthCalledWith(
+        1,
+        'group123@g.us',
+        { text: 'Baik, saya paham.', linkPreview: null },
+        { quoted: groupMsg }
+      );
+      expect(sock.sendMessage).toHaveBeenNthCalledWith(
+        2,
+        'group123@g.us',
+        {
+          text: 'Ini informasi yang Anda minta.\n\n*References:*\n1. Example (https://example.com)',
+          linkPreview: null,
+        }
+      );
+      expect(sleepSpy).toHaveBeenCalledTimes(1);
+      expect(sock.sendPresenceUpdate).toHaveBeenCalledWith('composing', 'group123@g.us');
+    });
+  });
 });

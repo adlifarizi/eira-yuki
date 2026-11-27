@@ -5,6 +5,7 @@ import { Logger } from 'pino';
 import { Config } from '../../config';
 import { EiraAgent, PermissionGatekeeper, IncomingMessage, IncomingMedia } from '../../core';
 import { MentionResolver } from './mention-resolver';
+import { computeTypingDelayMs, defaultSleep, splitIntoBubbles } from './message-pacer';
 
 /**
  * Sanitizes raw text input to prevent virtex / crash bombs / excessive invisible unicode.
@@ -132,7 +133,8 @@ export class MessageHandler {
     private logger: Logger,
     private config: Config,
     private eiraAgent: EiraAgent,
-    private gatekeeper: PermissionGatekeeper
+    private gatekeeper: PermissionGatekeeper,
+    private sleepFn: (ms: number) => Promise<void> = defaultSleep
   ) {
     this.mentionResolver = new MentionResolver({
       gatekeeper,
@@ -324,25 +326,33 @@ export class MessageHandler {
         this.logger.info(`[Tools] Executed: ${details.join(', ')}`);
       }
 
-      // 1. Send text reply first if present
+      // 1. Send text reply first if present (split into natural bubbles with typing tempo)
       if (response.text && response.text.trim().length > 0) {
-        let replyText = response.text;
+        const bubbles = splitIntoBubbles(response.text, this.config.bot.locale);
 
-        if (response.sources && response.sources.length > 0) {
-          replyText += '\n\n*References:*';
+        if (response.sources && response.sources.length > 0 && bubbles.length > 0) {
           const uniqueSources = response.sources.filter(
             (src, idx, self) => self.findIndex((s) => s.url === src.url) === idx
           );
-          uniqueSources.forEach((src, idx) => {
-            replyText += `\n${idx + 1}. ${src.title} (${src.url})`;
-          });
+          const refsBlock =
+            '\n\n*References:*' +
+            uniqueSources.map((src, idx) => `\n${idx + 1}. ${src.title} (${src.url})`).join('');
+          bubbles[bubbles.length - 1] += refsBlock;
         }
 
-        this.logger.debug(`[Chat] Reply to ${senderName} in ${chatId}: "${replyText.slice(0, 60)}"`);
+        this.logger.debug(
+          `[Chat] Reply to ${senderName} in ${chatId} (${bubbles.length} bubble(s)): "${bubbles[0].slice(0, 60)}"`
+        );
 
-        // Send regular message in DM (natural chat); quote message in Group to specify recipient
-        const sendOptions = isGroup ? { quoted: msg as WAMessage } : undefined;
-        await sock.sendMessage(chatId, { text: replyText, linkPreview: null }, sendOptions);
+        // Quote only on the first bubble in Group chats to keep threads clean
+        const firstSendOptions = isGroup ? { quoted: msg as WAMessage } : undefined;
+        await sock.sendMessage(chatId, { text: bubbles[0], linkPreview: null }, firstSendOptions);
+
+        for (let i = 1; i < bubbles.length; i++) {
+          await sock.sendPresenceUpdate('composing', chatId).catch(() => {});
+          await this.sleepFn(computeTypingDelayMs(bubbles[i]));
+          await sock.sendMessage(chatId, { text: bubbles[i], linkPreview: null });
+        }
       } else if (!response.attachment) {
         // Fallback if response returned neither text nor attachment
         const sendOptions = isGroup ? { quoted: msg as WAMessage } : undefined;
