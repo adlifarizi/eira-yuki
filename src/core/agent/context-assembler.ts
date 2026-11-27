@@ -8,6 +8,17 @@ import { TaskService } from '../scheduler';
 const RECENT_EVENTS_WINDOW_MS = 3 * 60 * 60 * 1000;
 export const DEFAULT_MAX_HISTORY_LIMIT = 30;
 
+/**
+ * Attaches speaker identity (`[Name (role)]: content`) to group chat messages so
+ * multi-party conversation history and current turns remain distinguishable.
+ */
+export function formatGroupTurnContent(incoming: IncomingMessage, content: string): string {
+  if (incoming.chatType !== 'group') {
+    return content;
+  }
+  return `[${incoming.senderName} (${incoming.role})]: ${content}`;
+}
+
 export interface ContextAssemblerOptions {
   personaBuilder: PersonaBuilder;
   toolRegistry: ToolRegistry;
@@ -125,9 +136,13 @@ export class ContextAssembler {
       parameters: tool.parameters,
     }));
 
-    let promptText = incoming.text;
+    let promptText = formatGroupTurnContent(incoming, incoming.text);
     if (incoming.quotedMessage) {
-      promptText = `[Replied/Quoted Message]:\n"${incoming.quotedMessage.text}"\n\n[User Message]:\n${incoming.text || '(Respond to the quoted message above)'}`;
+      const userTurnText = formatGroupTurnContent(
+        incoming,
+        incoming.text || '(Respond to the quoted message above)'
+      );
+      promptText = `[Replied/Quoted Message]:\n"${incoming.quotedMessage.text}"\n\n[User Message]:\n${userTurnText}`;
     }
 
     return {

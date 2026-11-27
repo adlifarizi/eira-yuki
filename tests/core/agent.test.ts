@@ -819,4 +819,96 @@ describe('EiraAgent', () => {
       expect(mockMoodEvaluator.evaluate).not.toHaveBeenCalled();
     });
   });
+
+  describe('Group Speaker Attribution', () => {
+    it('prefixes prompt with senderName and role in group chats, and leaves DM prompts plain', async () => {
+      const contextAssembler = new ContextAssembler({
+        personaBuilder: new PersonaBuilder('You are Eira Yuki.'),
+        toolRegistry: new ToolRegistry(),
+        timeZone: 'Asia/Jakarta',
+        locale: 'id-ID',
+      });
+
+      const groupContext = await contextAssembler.assemble({
+        id: 'g-1',
+        senderId: '628999',
+        senderName: 'Cynthia',
+        chatId: 'group@g.us',
+        chatType: 'group',
+        role: 'guest',
+        text: 'Halo Eira',
+        timestamp: Date.now(),
+      });
+      expect(groupContext.prompt).toBe('[Cynthia (guest)]: Halo Eira');
+
+      const dmContext = await contextAssembler.assemble({
+        id: 'd-1',
+        senderId: '628111',
+        senderName: 'Adli',
+        chatId: '628111@s.whatsapp.net',
+        chatType: 'dm',
+        role: 'owner',
+        text: 'Halo Eira',
+        timestamp: Date.now(),
+      });
+      expect(dmContext.prompt).toBe('Halo Eira');
+    });
+
+    it('persists group user messages to MemoryService with speaker attribution', async () => {
+      const mockContextAssembler = {
+        assemble: vi.fn().mockResolvedValue({
+          systemInstruction: 'sys',
+          prompt: '[Cynthia (guest)]: Halo Eira',
+          conversationHistory: [],
+          tools: [],
+        }),
+      } as unknown as ContextAssembler;
+
+      const mockExecutionLoop = {
+        run: vi.fn().mockResolvedValue({
+          text: 'Halo.',
+          actionsExecuted: [],
+        }),
+      } as unknown as ExecutionLoop;
+
+      const mockReflexionGuard = {
+        evaluate: vi.fn().mockImplementation((_inc, _ctx, res) => Promise.resolve(res)),
+      } as unknown as ReflexionGuard;
+
+      const mockMemoryService = {
+        saveChatMessage: vi.fn().mockResolvedValue(undefined),
+      } as any;
+
+      const agent = new EiraAgent({
+        contextAssembler: mockContextAssembler,
+        executionLoop: mockExecutionLoop,
+        reflexionGuard: mockReflexionGuard,
+        memoryService: mockMemoryService,
+      });
+
+      await agent.handleMessage({
+        id: 'g-2',
+        senderId: '628999',
+        senderName: 'Cynthia',
+        chatId: 'group@g.us',
+        chatType: 'group',
+        role: 'guest',
+        text: 'Halo Eira',
+        timestamp: Date.now(),
+      });
+
+      expect(mockMemoryService.saveChatMessage).toHaveBeenNthCalledWith(
+        1,
+        'group@g.us',
+        'user',
+        '[Cynthia (guest)]: Halo Eira'
+      );
+      expect(mockMemoryService.saveChatMessage).toHaveBeenNthCalledWith(
+        2,
+        'group@g.us',
+        'assistant',
+        'Halo.'
+      );
+    });
+  });
 });

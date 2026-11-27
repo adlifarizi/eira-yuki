@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { Logger } from 'pino';
 import { Config } from '../../config';
 import { EiraAgent, PermissionGatekeeper, IncomingMessage, IncomingMedia } from '../../core';
+import { MentionResolver } from './mention-resolver';
 
 /**
  * Sanitizes raw text input to prevent virtex / crash bombs / excessive invisible unicode.
@@ -125,13 +126,20 @@ export function resolveSenderPhone(senderId: string): string {
 
 export class MessageHandler {
   private cooldowns = new CooldownTracker();
+  private mentionResolver: MentionResolver;
 
   constructor(
     private logger: Logger,
     private config: Config,
     private eiraAgent: EiraAgent,
     private gatekeeper: PermissionGatekeeper
-  ) {}
+  ) {
+    this.mentionResolver = new MentionResolver({
+      gatekeeper,
+      ownerName: config.bot.ownerName,
+      botPhone: config.adapters.whatsapp.phoneNumber,
+    });
+  }
 
   async handle(sock: WASocket, msg: proto.IWebMessageInfo) {
     const m = msg.message;
@@ -166,6 +174,7 @@ export class MessageHandler {
     const isOwner = this.gatekeeper.isOwner(canonicalSenderId, 'whatsapp');
 
     const senderName = isOwner && this.config.bot.ownerName ? this.config.bot.ownerName : (msg.pushName || 'Pengguna');
+    this.mentionResolver.recordParticipant(rawSenderId, canonicalSenderId, senderName);
 
     // Check context info (quoted messages)
     const contextInfo =
@@ -191,14 +200,16 @@ export class MessageHandler {
 
     const isDirectlyAddressed = isQuotingBot || isTagMentioned;
 
-    // Clean @mention tag numbers from rawText for directly addressed messages
-    let processedText = rawText;
-    if (isDirectlyAddressed) {
-      processedText = processedText.replace(/@\d+/g, '').trim();
-      if (!processedText && !unwrapped.imageMessage) {
-        processedText = 'Halo Eira';
-      }
-    }
+    // Strip only bot @mentions and resolve other mentioned participants to display names
+    const processedText = await this.mentionResolver.processMentions({
+      text: rawText,
+      mentionedJids,
+      sock,
+      chatId,
+      isGroup,
+      hasImage: Boolean(unwrapped.imageMessage),
+      isDirectlyAddressed,
+    });
 
     // Skip if message contains neither text nor media
     if (!processedText && !rawText && !unwrapped.imageMessage) {

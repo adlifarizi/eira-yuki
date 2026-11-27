@@ -501,4 +501,46 @@ describe('MessageHandler Security & Integration', () => {
       expect(resolveSenderPhone('')).toBe('');
     });
   });
+
+  describe('Group Mention Resolution in MessageHandler', () => {
+    it('caches passive group participant names and resolves @mentions while stripping only bot tag', async () => {
+      const mockAgent = {
+        handleMessage: vi.fn().mockResolvedValue({ text: 'Siap, nanti saya sapa.' }),
+      } as unknown as EiraAgent;
+
+      const handler = new MessageHandler(logger, mockConfig, mockAgent, gatekeeper);
+      const sock = createMockSocket() as any;
+
+      // Passive message from Cynthia (does not address bot, so agent is not invoked)
+      await handler.handle(sock, {
+        key: { remoteJid: 'group123@g.us', participant: '628999888777@s.whatsapp.net', id: 'grp-passive' },
+        pushName: 'Cynthia',
+        message: { conversation: 'Halo semua di grup' },
+      } as any);
+      expect(mockAgent.handleMessage).not.toHaveBeenCalled();
+
+      // Now someone tags both Eira and Cynthia
+      await handler.handle(sock, {
+        key: { remoteJid: 'group123@g.us', participant: '628111222@s.whatsapp.net', id: 'grp-tag-both' },
+        pushName: 'Adli',
+        message: {
+          extendedTextMessage: {
+            text: '@65893522485461 tolong sapa @628999888777',
+            contextInfo: {
+              mentionedJid: ['65893522485461@lid', '628999888777@s.whatsapp.net'],
+            },
+          },
+        },
+      } as any);
+
+      expect(mockAgent.handleMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: 'tolong sapa @Cynthia',
+          senderName: 'Adli',
+          role: 'owner',
+          chatType: 'group',
+        })
+      );
+    });
+  });
 });

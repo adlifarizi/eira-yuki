@@ -3,7 +3,7 @@ import { IncomingMessage, CoreResponse, ResponseAttachment, StickerResolver } fr
 import { ChatMessage } from '../providers';
 import { MoodService, MoodEvaluator } from '../persona';
 import { MemoryService, MemoryConsolidator } from '../memory';
-import { ContextAssembler, AssembledAgentContext, DEFAULT_MAX_HISTORY_LIMIT } from './context-assembler';
+import { ContextAssembler, AssembledAgentContext, DEFAULT_MAX_HISTORY_LIMIT, formatGroupTurnContent } from './context-assembler';
 import { ExecutionLoop, ExecutionLoopResult } from './execution-loop';
 import { ReflexionGuard } from './reflexion-guard';
 import { isStickerToolResult, SEND_STICKER_TOOL_NAME } from '../tools/sticker-tool';
@@ -116,7 +116,12 @@ export class EiraAgent {
         : '';
       const userContent = incoming.text?.trim() || mediaLabel;
       if (userContent) {
-        await this.options.memoryService.saveChatMessage(incoming.chatId, 'user', userContent);
+        const persistedUserContent = formatGroupTurnContent(incoming, userContent);
+        await this.options.memoryService.saveChatMessage(
+          incoming.chatId,
+          'user',
+          persistedUserContent
+        );
         await this.options.memoryService.saveChatMessage(incoming.chatId, 'assistant', text.trim());
       }
 
