@@ -11,6 +11,7 @@ export interface ActionPayload {
   url?: string;
   text?: string;
   prompt?: string;
+  renderJs?: boolean;
   [key: string]: unknown;
 }
 
@@ -37,6 +38,7 @@ export interface TaskDispatchEvent {
   actionType: ActionType;
   text: string;
   url?: string;
+  previousSnippet?: string;
   diffSnippet?: string;
   dueTimestamp: number;
   status: string;

@@ -195,6 +195,18 @@ describe('readUrlTool', () => {
       expect(isSpaOrDynamicPage(noscriptHtml, 'Enable JS')).toBe(true);
     });
 
+    it('detects aria-busy loading indicators and module SPA shells with minimal text', () => {
+      const busyHtml = '<html><body><div aria-busy="true">Loading...</div></body></html>';
+      expect(isSpaOrDynamicPage(busyHtml, 'Loading...')).toBe(true);
+
+      const nextHtml =
+        '<html><head><script type="module" src="/app.js"></script></head><body>' +
+        '<div>' +
+        'x'.repeat(25000) +
+        '</div><div id="__NEXT_DATA__">{}</div></body></html>';
+      expect(isSpaOrDynamicPage(nextHtml, 'Short intro text')).toBe(true);
+    });
+
     it('identifies standard static HTML pages as non-SPA', () => {
       const normalHtml = '<html><head><title>News</title></head><body>' + '<p>Article paragraph text here.</p>'.repeat(30) + '</body></html>';
       const cleanBody = 'Article paragraph text here. '.repeat(30);
@@ -244,6 +256,37 @@ describe('readUrlTool', () => {
       expect(result.status).toBe('success');
       expect(result.source).toBe('headless_browser');
       expect(result.content).toContain('Live stream viewer count: 50,000');
+    });
+
+    it('prefers rendered visible text so aside/header stats and >3000 chars are preserved', async () => {
+      vi.spyOn(BrowserManager.prototype, 'isAvailable').mockReturnValue(true);
+      vi.spyOn(BrowserManager.prototype, 'renderPage').mockResolvedValue({
+        title: 'Portal',
+        html: '<html><head><title>Portal</title></head><body><aside>Applicants: 420 / Quota: 50</aside></body></html>',
+        text: 'A'.repeat(4000) + '\nApplicants: 420 / Quota: 50',
+      });
+
+      const result = await readUrlTool.execute(
+        { url: 'https://example.com/portal', renderJs: true },
+        mockContext
+      );
+
+      expect(result.status).toBe('success');
+      expect(result.source).toBe('headless_browser');
+      expect(result.content).toContain('Applicants: 420 / Quota: 50');
+      expect(result.content!.length).toBeGreaterThan(3000);
+    });
+
+    it('returns explicit error when renderJs is true but browser is unavailable', async () => {
+      vi.spyOn(BrowserManager.prototype, 'isAvailable').mockReturnValue(false);
+
+      const result = await readUrlTool.execute(
+        { url: 'https://example.com/spa', renderJs: true },
+        mockContext
+      );
+
+      expect(result.status).toBe('error');
+      expect(result.message).toMatch(/Chrome\/Chromium/i);
     });
   });
 });

@@ -69,6 +69,43 @@ describe('BrowserManager', () => {
     expect(mockBrowser.close).toHaveBeenCalled();
   });
 
+  it('waits for network idle non-fatally and extracts visible innerText when supported', async () => {
+    vi.spyOn(locator, 'locateChromeExecutable').mockReturnValue('/usr/bin/google-chrome');
+
+    const mockPage = {
+      setRequestInterception: vi.fn().mockResolvedValue(undefined),
+      on: vi.fn(),
+      setUserAgent: vi.fn().mockResolvedValue(undefined),
+      goto: vi.fn().mockResolvedValue(undefined),
+      waitForNetworkIdle: vi.fn().mockRejectedValue(new Error('Network idle timeout')),
+      evaluate: vi.fn().mockResolvedValue('Quota: 12 / 50\nApplicants: 38'),
+      content: vi.fn().mockResolvedValue('<html><body><aside>Quota: 12 / 50</aside></body></html>'),
+      title: vi.fn().mockResolvedValue('Portal'),
+      url: vi.fn().mockReturnValue('https://example.com/portal'),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const mockBrowser = {
+      connected: true,
+      newPage: vi.fn().mockResolvedValue(mockPage),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+
+    vi.spyOn(puppeteer, 'launch').mockResolvedValue(mockBrowser as any);
+
+    const manager = new BrowserManager({ idleTimeoutMs: 5000 });
+    const result = await manager.renderPage('https://example.com/portal', { waitAfterLoadMs: 50 });
+
+    expect(mockPage.waitForNetworkIdle).toHaveBeenCalled();
+    expect(result).toEqual({
+      html: '<html><body><aside>Quota: 12 / 50</aside></body></html>',
+      text: 'Quota: 12 / 50\nApplicants: 38',
+      title: 'Portal',
+      finalUrl: 'https://example.com/portal',
+    });
+    await manager.close();
+  });
+
   it('supports closeSync with SIGKILL for abrupt exits', () => {
     vi.spyOn(locator, 'locateChromeExecutable').mockReturnValue('/usr/bin/google-chrome');
     const mockProcess = {

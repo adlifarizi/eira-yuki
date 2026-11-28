@@ -32,7 +32,9 @@ export class TaskExecutor {
       }
 
       try {
-        const fetchRes = await this.pageFetcher.fetch(url);
+        const fetchRes = await this.pageFetcher.fetch(url, {
+          forceBrowser: task.actionPayload.renderJs === true,
+        });
 
         if (fetchRes.status !== 'success' || !fetchRes.content) {
           return { newHash: task.lastStateHash ?? undefined };
@@ -41,7 +43,10 @@ export class TaskExecutor {
         const currentHash = createHash('sha256').update(fetchRes.content).digest('hex');
 
         if (!task.lastStateHash) {
-          return { newHash: currentHash };
+          return {
+            newHash: currentHash,
+            diffSummary: fetchRes.content.slice(0, MAX_WATCH_CONTENT_CHARS),
+          };
         }
 
         if (task.lastStateHash !== currentHash) {
@@ -55,6 +60,7 @@ export class TaskExecutor {
               actionType: 'watch_url',
               text: `Change detected on URL: ${url}\n\nSummary:\n${diffSummary}`,
               url,
+              previousSnippet: task.lastResultSummary ?? undefined,
               diffSnippet: diffSummary,
               dueTimestamp: task.nextRunAt,
               status: 'active',

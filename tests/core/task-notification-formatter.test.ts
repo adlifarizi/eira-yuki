@@ -101,4 +101,36 @@ describe('TaskNotificationFormatter', () => {
     expect(formatted).toContain('[Web Update]');
     expect(formatted).toContain('https://example.com/blog');
   });
+
+  it('returns null when watch_url diff is evaluated as irrelevant noise against previousSnippet', async () => {
+    const mockProvider: LLMProvider = {
+      id: 'mock',
+      name: 'Mock Provider',
+      generate: vi.fn().mockResolvedValue({
+        text: 'NO_RELEVANT_CHANGE',
+      }),
+    };
+
+    const formatter = new TaskNotificationFormatter(mockProvider, personaBuilder);
+    const event: TaskDispatchEvent = {
+      id: 5,
+      chatId: '628111222@s.whatsapp.net',
+      actionType: 'watch_url',
+      text: 'Pantau jumlah kuota dan pelamar',
+      url: 'https://example.com/portal',
+      previousSnippet: 'Kuota: 50 | Pelamar: 420 | Updated 17:00',
+      diffSnippet: 'Kuota: 50 | Pelamar: 420 | Updated 19:00',
+      dueTimestamp: Date.now(),
+      status: 'active',
+      createdAt: Date.now(),
+    };
+
+    const formatted = await formatter.format(event, 'Adli');
+    expect(formatted).toBeNull();
+    expect(mockProvider.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining('Previous content snippet:'),
+      })
+    );
+  });
 });

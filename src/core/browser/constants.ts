@@ -4,7 +4,10 @@ export { DEFAULT_DESKTOP_USER_AGENT } from '../constants';
 export const DEFAULT_IDLE_TIMEOUT_MS = 30_000;
 
 /** Default maximum character length for extracted webpage text content. */
-export const MAX_EXTRACTED_CONTENT_CHARS = 3000;
+export const MAX_EXTRACTED_CONTENT_CHARS = 9000;
+
+/** Maximum character length allocated to JSON-LD structured metadata snippets. */
+export const MAX_JSON_LD_CHARS = 1200;
 
 /** Default HTTP fetch timeout in milliseconds for static page and API requests. */
 export const DEFAULT_FETCH_TIMEOUT_MS = 6000;
@@ -14,6 +17,15 @@ export const DEFAULT_RENDER_TIMEOUT_MS = 15_000;
 
 /** Default wait duration in milliseconds after page load for dynamic SPA hydration. */
 export const DEFAULT_WAIT_AFTER_LOAD_MS = 1500;
+
+/** Idle window in milliseconds required for network requests to be considered settled. */
+export const DEFAULT_NETWORK_IDLE_TIME_MS = 500;
+
+/** Maximum time in milliseconds to wait for network idle before proceeding. */
+export const DEFAULT_NETWORK_IDLE_TIMEOUT_MS = 5000;
+
+/** Polling interval in milliseconds used to check whether rendered DOM text has stabilized. */
+export const DOM_SETTLE_INTERVAL_MS = 350;
 
 /** Minimum character length required to accept dynamically rendered SPA content. */
 export const MIN_DYNAMIC_CONTENT_CHARS = 200;

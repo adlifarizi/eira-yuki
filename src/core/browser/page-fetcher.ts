@@ -1,6 +1,6 @@
-import { BrowserManager } from './browser-manager';
+import { BrowserManager, RenderResult } from './browser-manager';
 import { DEFAULT_ACCEPT_LANGUAGE, DEFAULT_DESKTOP_USER_AGENT, DEFAULT_FETCH_TIMEOUT_MS, DEFAULT_RENDER_TIMEOUT_MS, MAX_EXTRACTED_CONTENT_CHARS, MIN_DYNAMIC_CONTENT_CHARS } from './constants';
-import { cleanHtmlToText, isSpaOrDynamicPage } from './html-cleaner';
+import { cleanHtmlToText, isSpaOrDynamicPage, normalizeRenderedText } from './html-cleaner';
 import { isPrivateIpOrHost, isPrivateOrReservedHost } from './network-guard';
 import { extractWithTavily } from './tavily-extractor';
 import { FetchWebpageOptions, WebpageContentResult } from './types';
@@ -17,6 +17,45 @@ export class PageFetcher {
   constructor(private options: PageFetcherOptions = {}) {
     this.browserManager =
       options.browserManager ?? new BrowserManager({ chromePath: options.chromePath });
+  }
+
+  private buildRenderedResult(
+    rendered: RenderResult,
+    parsedUrl: URL,
+    trimmedUrl: string,
+    fallbackTitle?: string,
+    fallbackDescription?: string
+  ): WebpageContentResult {
+    if (rendered.finalUrl) {
+      try {
+        if (isPrivateIpOrHost(new URL(rendered.finalUrl).hostname)) {
+          return {
+            status: 'blocked',
+            url: trimmedUrl,
+            message: 'Access to private or local network addresses is restricted.',
+          };
+        }
+      } catch {
+        // Ignore malformed finalUrl
+      }
+    }
+
+    const cleaned = cleanHtmlToText(rendered.html, parsedUrl.toString());
+    const visibleText = rendered.text ? normalizeRenderedText(rendered.text) : '';
+    // Prefer visible DOM innerText when substantive so header/aside widgets aren't stripped by static HTML regexes.
+    const content =
+      visibleText.length >= MIN_DYNAMIC_CONTENT_CHARS || visibleText.length >= cleaned.body.length
+        ? visibleText
+        : cleaned.body;
+
+    return {
+      status: 'success',
+      url: trimmedUrl,
+      title: cleaned.title || rendered.title || fallbackTitle || 'No title',
+      description: cleaned.description || fallbackDescription,
+      content: content.slice(0, MAX_EXTRACTED_CONTENT_CHARS),
+      source: 'headless_browser',
+    };
   }
 
   async fetch(rawUrl: string, options?: FetchWebpageOptions): Promise<WebpageContentResult> {
@@ -40,34 +79,27 @@ export class PageFetcher {
       return { status: 'error', url: trimmed, message: 'Access to private or local network addresses is restricted.' };
     }
 
-    if (options?.forceBrowser && this.browserManager.isAvailable()) {
+    if (options?.forceBrowser) {
+      if (!this.browserManager.isAvailable()) {
+        return {
+          status: 'error',
+          url: trimmed,
+          message: 'Headless browser rendering was requested, but no Chrome/Chromium executable is available.',
+        };
+      }
+
       const rendered = await this.browserManager.renderPage(parsedUrl.toString(), {
         timeoutMs: options.timeoutMs ?? DEFAULT_RENDER_TIMEOUT_MS,
       });
-      if (rendered?.html) {
-        if (rendered.finalUrl) {
-          try {
-            if (isPrivateIpOrHost(new URL(rendered.finalUrl).hostname)) {
-              return {
-                status: 'blocked',
-                url: trimmed,
-                message: 'Access to private or local network addresses is restricted.',
-              };
-            }
-          } catch {
-            // Ignore malformed finalUrl
-          }
-        }
-        const { title, description, body } = cleanHtmlToText(rendered.html, parsedUrl.toString());
-        return {
-          status: 'success',
-          url: trimmed,
-          title: title || rendered.title || 'No title',
-          description,
-          content: body.slice(0, MAX_EXTRACTED_CONTENT_CHARS),
-          source: 'headless_browser',
-        };
+      if (rendered?.html || rendered?.text) {
+        return this.buildRenderedResult(rendered, parsedUrl, trimmed);
       }
+
+      return {
+        status: 'error',
+        url: trimmed,
+        message: 'Headless browser rendering failed or timed out for this page.',
+      };
     }
 
     try {
@@ -131,30 +163,20 @@ export class PageFetcher {
         const rendered = await this.browserManager.renderPage(parsedUrl.toString(), {
           timeoutMs: options?.timeoutMs ?? DEFAULT_RENDER_TIMEOUT_MS,
         });
-        if (rendered?.html) {
-        if (rendered.finalUrl) {
-          try {
-            if (isPrivateIpOrHost(new URL(rendered.finalUrl).hostname)) {
-              return {
-                status: 'blocked',
-                url: trimmed,
-                message: 'Access to private or local network addresses is restricted.',
-              };
-            }
-          } catch {
-            // Ignore malformed finalUrl
+        if (rendered?.html || rendered?.text) {
+          const renderedResult = this.buildRenderedResult(
+            rendered,
+            parsedUrl,
+            trimmed,
+            title,
+            description
+          );
+          if (renderedResult.status !== 'success') {
+            return renderedResult;
           }
-        }
-          const dynamicCleaned = cleanHtmlToText(rendered.html, parsedUrl.toString());
-          if (dynamicCleaned.body.length >= body.length || dynamicCleaned.body.length > MIN_DYNAMIC_CONTENT_CHARS) {
-            return {
-              status: 'success',
-              url: trimmed,
-              title: dynamicCleaned.title || rendered.title || title || 'No title',
-              description: dynamicCleaned.description || description,
-              content: dynamicCleaned.body.slice(0, MAX_EXTRACTED_CONTENT_CHARS),
-              source: 'headless_browser',
-            };
+          const renderedLength = renderedResult.content?.length ?? 0;
+          if (renderedLength >= body.length || renderedLength > MIN_DYNAMIC_CONTENT_CHARS) {
+            return renderedResult;
           }
         }
       }

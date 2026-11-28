@@ -1,4 +1,16 @@
-import { MAX_EXTRACTED_CONTENT_CHARS } from './constants';
+import { MAX_EXTRACTED_CONTENT_CHARS, MAX_JSON_LD_CHARS } from './constants';
+
+/**
+ * Normalizes visible text extracted directly from a rendered browser DOM (`document.body.innerText`).
+ */
+export function normalizeRenderedText(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, MAX_EXTRACTED_CONTENT_CHARS);
+}
 
 export function cleanHtmlToText(
   html: string,
@@ -94,7 +106,7 @@ export function cleanHtmlToText(
 
   let combined = '';
   if (jsonLdSnippets.length > 0) {
-    combined += jsonLdSnippets.join('\n') + '\n\n';
+    combined += jsonLdSnippets.join('\n').slice(0, MAX_JSON_LD_CHARS) + '\n\n';
   }
   combined += cleaned;
 
@@ -128,6 +140,19 @@ export function isSpaOrDynamicPage(html: string, bodyText: string): boolean {
       html
     );
   if (hasJsRequiredNotice && cleanBody.length < 600) {
+    return true;
+  }
+
+  const hasAriaLoadingIndicator =
+    /aria-busy=["']true["']/i.test(html) || /role=["']progressbar["']/i.test(html);
+  if (hasAriaLoadingIndicator && cleanBody.length < 1500) {
+    return true;
+  }
+
+  const hasSpaFrameworkMarkers =
+    /<script[^>]+type=["']module["']/i.test(html) ||
+    /__NEXT_DATA__|data-reactroot|ng-version|data-v-/i.test(html);
+  if (hasSpaFrameworkMarkers && html.length > 20000 && cleanBody.length < 1800) {
     return true;
   }
 

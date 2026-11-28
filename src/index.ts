@@ -28,6 +28,10 @@ async function main() {
       event,
       config.bot.ownerName || 'User'
     );
+    if (!message) {
+      logger.info(`[TaskDaemon] Suppressed irrelevant watch_url notification #${event.id}`);
+      return;
+    }
     await whatsappClient.sendMessage(event.chatId, message);
   });
 

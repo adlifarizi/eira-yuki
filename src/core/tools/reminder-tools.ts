@@ -85,6 +85,10 @@ export function createSetReminderTool(
           type: 'string',
           description: 'Optional URL to watch. If provided, Eira periodically checks this webpage for content changes and alerts upon delta.',
         },
+        renderJs: {
+          type: 'boolean',
+          description: 'Optional: set true when watching a dynamic JavaScript SPA URL so each periodic check uses headless browser rendering.',
+        },
       },
       required: ['text'],
     },
@@ -131,6 +135,7 @@ export function createSetReminderTool(
         actionPayload: {
           url: params.url,
           text: params.text,
+          ...(params.renderJs === true ? { renderJs: true } : {}),
         },
         nextRunAt: dueTimestamp,
         expiresAt,

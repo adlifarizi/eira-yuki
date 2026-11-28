@@ -1,7 +1,7 @@
-import puppeteer, { Browser } from 'puppeteer-core';
+import puppeteer, { Browser, Page } from 'puppeteer-core';
 import { Logger } from 'pino';
 import { locateChromeExecutable } from './chrome-locator';
-import { DEFAULT_DESKTOP_USER_AGENT, DEFAULT_IDLE_TIMEOUT_MS, DEFAULT_RENDER_TIMEOUT_MS, DEFAULT_WAIT_AFTER_LOAD_MS } from './constants';
+import { DEFAULT_DESKTOP_USER_AGENT, DEFAULT_IDLE_TIMEOUT_MS, DEFAULT_NETWORK_IDLE_TIME_MS, DEFAULT_NETWORK_IDLE_TIMEOUT_MS, DEFAULT_RENDER_TIMEOUT_MS, DEFAULT_WAIT_AFTER_LOAD_MS, DOM_SETTLE_INTERVAL_MS } from './constants';
 
 export interface RenderOptions {
   timeoutMs?: number;
@@ -10,6 +10,7 @@ export interface RenderOptions {
 
 export interface RenderResult {
   html: string;
+  text?: string;
   title?: string;
   finalUrl?: string;
 }
@@ -147,17 +148,22 @@ export class BrowserManager {
         timeout,
       });
 
-      // Allow brief window for SPA frameworks (React/Vue/Angular) to mount and hydrate
       if (waitAfterLoad > 0) {
-        await new Promise((r) => setTimeout(r, waitAfterLoad));
+        await this.waitForPageSettled(page, timeout, waitAfterLoad);
       }
 
       const html = await page.content();
+      const text = await this.extractVisibleText(page);
       const title = await page.title();
       const finalUrl = page.url();
 
       this.resetIdleTimer();
-      return { html, title, finalUrl };
+      return {
+        html,
+        ...(text ? { text } : {}),
+        title,
+        finalUrl,
+      };
     } catch (err) {
       this.logger?.warn({ err, url }, '[BrowserManager] Failed to render dynamic page');
       return null;
@@ -165,6 +171,63 @@ export class BrowserManager {
       if (page) {
         await page.close().catch(() => {});
       }
+    }
+  }
+
+  /**
+   * Waits for async XHR/fetch activity and client-side DOM mutations to settle without
+   * failing if long-polling connections keep the network open.
+   */
+  private async waitForPageSettled(
+    page: Page,
+    timeoutMs: number,
+    waitAfterLoadMs: number
+  ): Promise<void> {
+    if (typeof page.waitForNetworkIdle === 'function') {
+      await page
+        .waitForNetworkIdle({
+          idleTime: DEFAULT_NETWORK_IDLE_TIME_MS,
+          timeout: Math.min(timeoutMs, DEFAULT_NETWORK_IDLE_TIMEOUT_MS),
+        })
+        .catch(() => {});
+    }
+
+    if (typeof page.evaluate !== 'function') {
+      await new Promise((r) => setTimeout(r, waitAfterLoadMs));
+      return;
+    }
+
+    const readTextLength = async (): Promise<number> => {
+      try {
+        return await page.evaluate(() => document.body?.innerText?.trim().length ?? 0);
+      } catch {
+        return 0;
+      }
+    };
+
+    const deadline = Date.now() + waitAfterLoadMs;
+    let previousLength = await readTextLength();
+    while (Date.now() < deadline) {
+      const stepMs = Math.min(DOM_SETTLE_INTERVAL_MS, Math.max(50, deadline - Date.now()));
+      await new Promise((r) => setTimeout(r, stepMs));
+      const currentLength = await readTextLength();
+      if (currentLength > 0 && currentLength === previousLength) {
+        break;
+      }
+      previousLength = currentLength;
+    }
+  }
+
+  private async extractVisibleText(page: Page): Promise<string | undefined> {
+    if (typeof page.evaluate !== 'function') {
+      return undefined;
+    }
+    try {
+      const raw = await page.evaluate(() => document.body?.innerText ?? '');
+      const trimmed = typeof raw === 'string' ? raw.trim() : '';
+      return trimmed || undefined;
+    } catch {
+      return undefined;
     }
   }
 
