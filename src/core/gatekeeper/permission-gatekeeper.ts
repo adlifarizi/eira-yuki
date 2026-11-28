@@ -47,10 +47,14 @@ export class PermissionGatekeeper {
 
   /**
    * Determines whether the bot should respond to an incoming message based on chat type,
-   * direct mention, or configured bot aliases.
+   * direct mention, registered prefix command, or configured bot aliases.
    */
-  shouldRespond(msg: IncomingMessage, isDirectlyAddressed: boolean = false): boolean {
-    if (msg.chatType === 'dm' || isDirectlyAddressed) {
+  shouldRespond(
+    msg: IncomingMessage,
+    isDirectlyAddressed: boolean = false,
+    isRegisteredCommand: boolean = false
+  ): boolean {
+    if (msg.chatType === 'dm' || isDirectlyAddressed || isRegisteredCommand) {
       return true;
     }
 

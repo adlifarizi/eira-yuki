@@ -3,15 +3,21 @@ import { splitIntoBubbles, computeTypingDelayMs } from '../../src/adapters/whats
 
 describe('message-pacer', () => {
   describe('splitIntoBubbles', () => {
-    it('splits multi-paragraph replies into separate bubbles up to maxBubbles', () => {
-      const text = 'Baik, saya paham.\n\nJadwal sudah saya catat.\n\nJangan lupa istirahat.\n\nBesok masih ada agenda pagi.';
+    it('splits longer multi-paragraph replies into separate bubbles up to maxBubbles', () => {
+      const text =
+        'Baik, saya paham maksud Anda dengan rencana tersebut.\n\nJadwal pengingatnya sudah saya catat rapi ke dalam daftar harian.\n\nJangan lupa untuk tetap menyempatkan waktu istirahat.\n\nBesok masih ada agenda pagi yang cukup padat.';
       const bubbles = splitIntoBubbles(text, 'id-ID', 3);
 
       expect(bubbles).toEqual([
-        'Baik, saya paham.',
-        'Jadwal sudah saya catat.',
-        'Jangan lupa istirahat.\n\nBesok masih ada agenda pagi.',
+        'Baik, saya paham maksud Anda dengan rencana tersebut.',
+        'Jadwal pengingatnya sudah saya catat rapi ke dalam daftar harian.',
+        'Jangan lupa untuk tetap menyempatkan waktu istirahat.\n\nBesok masih ada agenda pagi yang cukup padat.',
       ]);
+    });
+
+    it('keeps short replies (<= 140 chars) in a single bubble even with newlines', () => {
+      const shortTwoLines = 'Duduk diam, mengawasi waktu Anda yang berjalan.\n\nSudah hampir satu jam sejak Anda mulai.';
+      expect(splitIntoBubbles(shortTwoLines, 'id-ID', 3)).toEqual([shortTwoLines]);
     });
 
     it('splits longer single-paragraph replies using Intl.Segmenter sentence boundaries', () => {
@@ -44,12 +50,12 @@ describe('message-pacer', () => {
 
     it('caps sentence segments at maxBubbles by merging trailing sentences', () => {
       const text =
-        'Kalimat pertama cukup panjang untuk memulai obrolan. Kalimat kedua menyusul. Kalimat ketiga juga ada. Kalimat keempat digabung.';
+        'Kalimat pertama cukup panjang untuk memulai obrolan ini dengan jelas. Kalimat kedua menyusul sebagai lanjutan. Kalimat ketiga juga ada di sini. Kalimat keempat digabung.';
       const bubbles = splitIntoBubbles(text, 'id-ID', 2);
 
       expect(bubbles).toEqual([
-        'Kalimat pertama cukup panjang untuk memulai obrolan.',
-        'Kalimat kedua menyusul. Kalimat ketiga juga ada. Kalimat keempat digabung.',
+        'Kalimat pertama cukup panjang untuk memulai obrolan ini dengan jelas.',
+        'Kalimat kedua menyusul sebagai lanjutan. Kalimat ketiga juga ada di sini. Kalimat keempat digabung.',
       ]);
     });
   });

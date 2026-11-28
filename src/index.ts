@@ -1,16 +1,24 @@
-import { WhatsAppClient, MessageHandler } from './adapters/whatsapp';
+import { WhatsAppClient, MessageHandler, registerWhatsAppCommands } from './adapters/whatsapp';
 import logger from './utils/logger';
 import config from './config';
 import { db } from './database';
 import { createEiraCore } from './core';
 import { StickerCatalog } from './utils/sticker-catalog';
+import { createStickerMaker } from './utils/sticker-maker';
 
 async function main() {
   logger.info('Starting Eira Yuki Application...');
 
   const stickerCatalog = new StickerCatalog();
   const core = createEiraCore(config, logger, db, stickerCatalog);
-  const messageHandler = new MessageHandler(logger, config, core.agent, core.gatekeeper);
+  registerWhatsAppCommands(core.commandRouter, createStickerMaker(logger), logger);
+  const messageHandler = new MessageHandler(
+    logger,
+    config,
+    core.agent,
+    core.gatekeeper,
+    core.commandRouter
+  );
   const whatsappClient = new WhatsAppClient(logger, config, messageHandler);
   await whatsappClient.start();
 

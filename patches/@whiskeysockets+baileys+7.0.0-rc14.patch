@@ -1,0 +1,295 @@
+diff --git a/node_modules/@whiskeysockets/baileys/WAProto/WAProto.proto b/node_modules/@whiskeysockets/baileys/WAProto/WAProto.proto
+index d763174..ba3bbcf 100644
+--- a/node_modules/@whiskeysockets/baileys/WAProto/WAProto.proto
++++ b/node_modules/@whiskeysockets/baileys/WAProto/WAProto.proto
+@@ -2159,6 +2159,7 @@ message Message {
+     optional PollCreationMessage pollCreationMessageV5 = 111;
+     optional NewsletterFollowerInviteMessage newsletterFollowerInviteMessageV2 = 113;
+     optional PollResultSnapshotMessage pollResultSnapshotMessageV3 = 114;
++    optional FutureProofMessage audioStickerMessage = 134;
+     message AlbumMessage {
+         optional uint32 expectedImageCount = 2;
+         optional uint32 expectedVideoCount = 3;
+@@ -3500,6 +3501,11 @@ message Message {
+         optional bool isLottie = 21;
+         optional string accessibilityLabel = 22;
+         optional Message.MediaKeyDomain mediaKeyDomain = 23;
++        optional int32 premium = 24;
++        optional string emojis = 25;
++        oneof audio {
++            Message.AudioMessage audioMessage = 26;
++        }
+     }
+ 
+     message StickerPackMessage {
+diff --git a/node_modules/@whiskeysockets/baileys/WAProto/index.d.ts b/node_modules/@whiskeysockets/baileys/WAProto/index.d.ts
+index 8640580..cb772e0 100644
+--- a/node_modules/@whiskeysockets/baileys/WAProto/index.d.ts
++++ b/node_modules/@whiskeysockets/baileys/WAProto/index.d.ts
+@@ -5278,6 +5278,7 @@ export namespace proto {
+         pollCreationMessageV5?: (proto.Message.IPollCreationMessage|null);
+         newsletterFollowerInviteMessageV2?: (proto.Message.INewsletterFollowerInviteMessage|null);
+         pollResultSnapshotMessageV3?: (proto.Message.IPollResultSnapshotMessage|null);
++        audioStickerMessage?: (proto.Message.IFutureProofMessage|null);
+     }
+ 
+     class Message implements IMessage {
+@@ -5377,6 +5378,7 @@ export namespace proto {
+         public pollCreationMessageV5?: (proto.Message.IPollCreationMessage|null);
+         public newsletterFollowerInviteMessageV2?: (proto.Message.INewsletterFollowerInviteMessage|null);
+         public pollResultSnapshotMessageV3?: (proto.Message.IPollResultSnapshotMessage|null);
++        public audioStickerMessage?: (proto.Message.IFutureProofMessage|null);
+         public static create(properties?: proto.IMessage): proto.Message;
+         public static encode(m: proto.IMessage, w?: $protobuf.Writer): $protobuf.Writer;
+         public static decode(r: ($protobuf.Reader|Uint8Array), l?: number): proto.Message;
+@@ -9008,6 +9010,9 @@ export namespace proto {
+             isLottie?: (boolean|null);
+             accessibilityLabel?: (string|null);
+             mediaKeyDomain?: (proto.Message.MediaKeyDomain|null);
++            premium?: (number|null);
++            emojis?: (string|null);
++            audioMessage?: (proto.Message.IAudioMessage|null);
+         }
+ 
+         class StickerMessage implements IStickerMessage {
+@@ -9033,6 +9038,9 @@ export namespace proto {
+             public isLottie?: (boolean|null);
+             public accessibilityLabel?: (string|null);
+             public mediaKeyDomain?: (proto.Message.MediaKeyDomain|null);
++            public premium?: (number|null);
++            public emojis?: (string|null);
++            public audioMessage?: (proto.Message.IAudioMessage|null);
+             public static create(properties?: proto.Message.IStickerMessage): proto.Message.StickerMessage;
+             public static encode(m: proto.Message.IStickerMessage, w?: $protobuf.Writer): $protobuf.Writer;
+             public static decode(r: ($protobuf.Reader|Uint8Array), l?: number): proto.Message.StickerMessage;
+diff --git a/node_modules/@whiskeysockets/baileys/WAProto/index.js b/node_modules/@whiskeysockets/baileys/WAProto/index.js
+index 8950f90..4afc342 100644
+--- a/node_modules/@whiskeysockets/baileys/WAProto/index.js
++++ b/node_modules/@whiskeysockets/baileys/WAProto/index.js
+@@ -35561,6 +35561,7 @@ export const proto = $root.proto = (() => {
+         Message.prototype.pollCreationMessageV5 = null;
+         Message.prototype.newsletterFollowerInviteMessageV2 = null;
+         Message.prototype.pollResultSnapshotMessageV3 = null;
++        Message.prototype.audioStickerMessage = null;
+ 
+         let $oneOfFields;
+ 
+@@ -36134,6 +36135,12 @@ export const proto = $root.proto = (() => {
+             set: $util.oneOfSetter($oneOfFields)
+         });
+ 
++        // Virtual OneOf for proto3 optional field
++        Object.defineProperty(Message.prototype, "_audioStickerMessage", {
++            get: $util.oneOfGetter($oneOfFields = ["audioStickerMessage"]),
++            set: $util.oneOfSetter($oneOfFields)
++        });
++
+         Message.create = function create(properties) {
+             return new Message(properties);
+         };
+@@ -36331,6 +36338,8 @@ export const proto = $root.proto = (() => {
+                 $root.proto.Message.NewsletterFollowerInviteMessage.encode(m.newsletterFollowerInviteMessageV2, w.uint32(906).fork()).ldelim();
+             if (m.pollResultSnapshotMessageV3 != null && Object.hasOwnProperty.call(m, "pollResultSnapshotMessageV3"))
+                 $root.proto.Message.PollResultSnapshotMessage.encode(m.pollResultSnapshotMessageV3, w.uint32(914).fork()).ldelim();
++            if (m.audioStickerMessage != null && Object.hasOwnProperty.call(m, "audioStickerMessage"))
++                $root.proto.Message.FutureProofMessage.encode(m.audioStickerMessage, w.uint32(1074).fork()).ldelim();
+             return w;
+         };
+ 
+@@ -36723,6 +36732,10 @@ export const proto = $root.proto = (() => {
+                         m.pollResultSnapshotMessageV3 = $root.proto.Message.PollResultSnapshotMessage.decode(r, r.uint32());
+                         break;
+                     }
++                case 134: {
++                        m.audioStickerMessage = $root.proto.Message.FutureProofMessage.decode(r, r.uint32());
++                        break;
++                    }
+                 default:
+                     r.skipType(t & 7);
+                     break;
+@@ -37208,6 +37221,11 @@ export const proto = $root.proto = (() => {
+                     throw TypeError(".proto.Message.pollResultSnapshotMessageV3: object expected");
+                 m.pollResultSnapshotMessageV3 = $root.proto.Message.PollResultSnapshotMessage.fromObject(d.pollResultSnapshotMessageV3);
+             }
++            if (d.audioStickerMessage != null) {
++                if (typeof d.audioStickerMessage !== "object")
++                    throw TypeError(".proto.Message.audioStickerMessage: object expected");
++                m.audioStickerMessage = $root.proto.Message.FutureProofMessage.fromObject(d.audioStickerMessage);
++            }
+             return m;
+         };
+ 
+@@ -37690,6 +37708,11 @@ export const proto = $root.proto = (() => {
+                 if (o.oneofs)
+                     d._pollResultSnapshotMessageV3 = "pollResultSnapshotMessageV3";
+             }
++            if (m.audioStickerMessage != null && m.hasOwnProperty("audioStickerMessage")) {
++                d.audioStickerMessage = $root.proto.Message.FutureProofMessage.toObject(m.audioStickerMessage, o);
++                if (o.oneofs)
++                    d._audioStickerMessage = "audioStickerMessage";
++            }
+             return d;
+         };
+ 
+@@ -62624,6 +62647,9 @@ export const proto = $root.proto = (() => {
+             StickerMessage.prototype.isLottie = null;
+             StickerMessage.prototype.accessibilityLabel = null;
+             StickerMessage.prototype.mediaKeyDomain = null;
++            StickerMessage.prototype.premium = null;
++            StickerMessage.prototype.emojis = null;
++            StickerMessage.prototype.audioMessage = null;
+ 
+             let $oneOfFields;
+ 
+@@ -62802,6 +62828,12 @@ export const proto = $root.proto = (() => {
+                     w.uint32(178).string(m.accessibilityLabel);
+                 if (m.mediaKeyDomain != null && Object.hasOwnProperty.call(m, "mediaKeyDomain"))
+                     w.uint32(184).int32(m.mediaKeyDomain);
++                if (m.premium != null && Object.hasOwnProperty.call(m, "premium"))
++                    w.uint32(192).int32(m.premium);
++                if (m.emojis != null && Object.hasOwnProperty.call(m, "emojis"))
++                    w.uint32(202).string(m.emojis);
++                if (m.audioMessage != null && Object.hasOwnProperty.call(m, "audioMessage"))
++                    $root.proto.Message.AudioMessage.encode(m.audioMessage, w.uint32(210).fork()).ldelim();
+                 return w;
+             };
+ 
+@@ -62898,6 +62930,18 @@ export const proto = $root.proto = (() => {
+                             m.mediaKeyDomain = r.int32();
+                             break;
+                         }
++                    case 24: {
++                            m.premium = r.int32();
++                            break;
++                        }
++                    case 25: {
++                            m.emojis = r.string();
++                            break;
++                        }
++                    case 26: {
++                            m.audioMessage = $root.proto.Message.AudioMessage.decode(r, r.uint32());
++                            break;
++                        }
+                     default:
+                         r.skipType(t & 7);
+                         break;
+@@ -63036,6 +63080,17 @@ export const proto = $root.proto = (() => {
+                     m.mediaKeyDomain = 4;
+                     break;
+                 }
++                if (d.premium != null) {
++                    m.premium = d.premium | 0;
++                }
++                if (d.emojis != null) {
++                    m.emojis = String(d.emojis);
++                }
++                if (d.audioMessage != null) {
++                    if (typeof d.audioMessage !== "object")
++                        throw TypeError(".proto.Message.StickerMessage.audioMessage: object expected");
++                    m.audioMessage = $root.proto.Message.AudioMessage.fromObject(d.audioMessage);
++                }
+                 return m;
+             };
+ 
+@@ -63157,6 +63212,21 @@ export const proto = $root.proto = (() => {
+                     if (o.oneofs)
+                         d._mediaKeyDomain = "mediaKeyDomain";
+                 }
++                if (m.premium != null && m.hasOwnProperty("premium")) {
++                    d.premium = m.premium;
++                    if (o.oneofs)
++                        d._premium = "premium";
++                }
++                if (m.emojis != null && m.hasOwnProperty("emojis")) {
++                    d.emojis = m.emojis;
++                    if (o.oneofs)
++                        d._emojis = "emojis";
++                }
++                if (m.audioMessage != null && m.hasOwnProperty("audioMessage")) {
++                    d.audioMessage = $root.proto.Message.AudioMessage.toObject(m.audioMessage, o);
++                    if (o.oneofs)
++                        d._audio = "audioMessage";
++                }
+                 return d;
+             };
+ 
+diff --git a/node_modules/@whiskeysockets/baileys/lib/Socket/messages-send.js b/node_modules/@whiskeysockets/baileys/lib/Socket/messages-send.js
+index d61e064..50cd656 100644
+--- a/node_modules/@whiskeysockets/baileys/lib/Socket/messages-send.js
++++ b/node_modules/@whiskeysockets/baileys/lib/Socket/messages-send.js
+@@ -925,7 +925,7 @@ export const makeMessagesSocket = (config) => {
+         else if (message.liveLocationMessage) {
+             return 'livelocation';
+         }
+-        else if (message.stickerMessage) {
++        else if (message.stickerMessage || message.audioStickerMessage?.message?.stickerMessage) {
+             return 'sticker';
+         }
+         else if (message.listMessage) {
+diff --git a/node_modules/@whiskeysockets/baileys/lib/Types/Message.d.ts b/node_modules/@whiskeysockets/baileys/lib/Types/Message.d.ts
+index 0004fb6..696c4bc 100644
+--- a/node_modules/@whiskeysockets/baileys/lib/Types/Message.d.ts
++++ b/node_modules/@whiskeysockets/baileys/lib/Types/Message.d.ts
+@@ -141,6 +141,12 @@ export type AnyMediaMessageContent = (({
+ } | ({
+     sticker: WAMediaUpload;
+     isAnimated?: boolean;
++    audio?: WAMediaUpload;
++    audioMimetype?: string;
++    seconds?: number;
++    ptt?: boolean;
++    emojis?: string;
++    accessibilityLabel?: string;
+ } & WithDimensions) | ({
+     document: WAMediaUpload;
+     mimetype: string;
+diff --git a/node_modules/@whiskeysockets/baileys/lib/Utils/messages.js b/node_modules/@whiskeysockets/baileys/lib/Utils/messages.js
+index 247b1f1..86764f7 100644
+--- a/node_modules/@whiskeysockets/baileys/lib/Utils/messages.js
++++ b/node_modules/@whiskeysockets/baileys/lib/Utils/messages.js
+@@ -485,6 +485,35 @@ export const generateWAMessageContent = async (message, options) => {
+             }
+         };
+     }
++    else if ('sticker' in message && message.audio) {
++        const [stickerContent, audioContent] = await Promise.all([
++            prepareWAMessageMedia({
++                sticker: message.sticker,
++                isAnimated: message.isAnimated,
++                width: message.width,
++                height: message.height,
++                mimetype: message.mimetype
++            }, options),
++            prepareWAMessageMedia({
++                audio: message.audio,
++                mimetype: message.audioMimetype || 'audio/ogg; codecs=opus',
++                seconds: message.seconds,
++                ptt: message.ptt ?? false
++            }, options)
++        ]);
++        const stickerMessage = stickerContent.stickerMessage;
++        if (stickerMessage && audioContent.audioMessage) {
++            stickerMessage.audioMessage = audioContent.audioMessage;
++            if (message.emojis !== undefined) {
++                stickerMessage.emojis = message.emojis;
++            }
++            if (message.accessibilityLabel !== undefined) {
++                stickerMessage.accessibilityLabel = message.accessibilityLabel;
++            }
++            stickerMessage.premium = 0;
++        }
++        m = { audioStickerMessage: { message: { stickerMessage } } };
++    }
+     else {
+         m = await prepareWAMessageMedia(message, options);
+     }
+@@ -657,7 +686,8 @@ export const normalizeMessageContent = (content) => {
+             message?.editedMessage ||
+             message?.associatedChildMessage ||
+             message?.groupStatusMessage ||
+-            message?.groupStatusMessageV2);
++            message?.groupStatusMessageV2 ||
++            message?.audioStickerMessage);
+     }
+ };
+ /**

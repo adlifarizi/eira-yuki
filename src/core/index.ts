@@ -11,8 +11,10 @@ import { TaskExecutor, TaskNotificationFormatter, TaskScheduler, TaskService } f
 import { createCurrentTimeTool, createMemoryTools, createReadUrlTool, createReminderTools, createWebSearchTool, createSendStickerTool, ToolRegistry } from './tools';
 import { BrowserManager, PageFetcher } from './browser';
 import { StickerResolver } from './types';
+import { CommandRouter, createHelpCommand } from './commands';
 
 export * from './types';
+export * from './commands';
 export { EiraAgent, type EiraAgentOptions, ContextAssembler, ExecutionLoop, ReflexionGuard } from './agent';
 export { PermissionGatekeeper } from './gatekeeper';
 export { TaskScheduler, TaskNotificationFormatter, type TaskDispatchEvent } from './scheduler';
@@ -26,6 +28,7 @@ export { BrowserManager, PageFetcher } from './browser';
 export interface EiraCore {
   agent: EiraAgent;
   gatekeeper: PermissionGatekeeper;
+  commandRouter: CommandRouter;
   taskScheduler: TaskScheduler;
   notificationFormatter: TaskNotificationFormatter;
   browserManager: BrowserManager;
@@ -159,9 +162,13 @@ export function createEiraCore(
 
   const notificationFormatter = new TaskNotificationFormatter(llmProvider, personaBuilder);
 
+  const commandRouter = new CommandRouter(config.bot.commandPrefix, logger);
+  commandRouter.register(createHelpCommand(commandRouter));
+
   return {
     agent,
     gatekeeper,
+    commandRouter,
     taskScheduler,
     notificationFormatter,
     browserManager,

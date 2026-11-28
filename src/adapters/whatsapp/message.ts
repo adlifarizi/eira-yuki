@@ -3,9 +3,9 @@ import path from 'path';
 import fs from 'node:fs';
 import { Logger } from 'pino';
 import { Config } from '../../config';
-import { EiraAgent, PermissionGatekeeper, IncomingMessage, IncomingMedia } from '../../core';
+import { CommandRouter, EiraAgent, PermissionGatekeeper, IncomingMessage, IncomingMedia } from '../../core';
 import { MentionResolver } from './mention-resolver';
-import { computeTypingDelayMs, defaultSleep, splitIntoBubbles } from './message-pacer';
+import * as messagePacer from './message-pacer';
 
 /**
  * Sanitizes raw text input to prevent virtex / crash bombs / excessive invisible unicode.
@@ -134,7 +134,7 @@ export class MessageHandler {
     private config: Config,
     private eiraAgent: EiraAgent,
     private gatekeeper: PermissionGatekeeper,
-    private sleepFn: (ms: number) => Promise<void> = defaultSleep
+    private commandRouter?: CommandRouter
   ) {
     this.mentionResolver = new MentionResolver({
       gatekeeper,
@@ -213,12 +213,19 @@ export class MessageHandler {
       isDirectlyAddressed,
     });
 
+    const hasPendingCommand = this.commandRouter?.hasPendingInteraction(chatId, canonicalSenderId) ?? false;
+
     // Skip if message contains neither text nor media
-    if (!processedText && !rawText && !unwrapped.imageMessage) {
+    if (
+      !processedText &&
+      !rawText &&
+      !unwrapped.imageMessage &&
+      !(hasPendingCommand && unwrapped.audioMessage)
+    ) {
       return;
     }
 
-    const fallbackText = unwrapped.imageMessage ? '[Gambar]' : '';
+    const fallbackText = unwrapped.imageMessage ? '[Gambar]' : hasPendingCommand && unwrapped.audioMessage ? '[Audio]' : '';
     const preliminaryText = processedText || rawText || fallbackText;
 
     const preliminaryIncoming: IncomingMessage = {
@@ -233,43 +240,29 @@ export class MessageHandler {
       adapter: 'whatsapp',
     };
 
-    // Gatekeeper check: Only proceed if in DM or if directly addressed / called by alias in group
-    const shouldRespond = this.gatekeeper.shouldRespond(preliminaryIncoming, isDirectlyAddressed);
+    // Gatekeeper check: Only proceed if in DM, directly addressed, registered command, or called by alias in group
+    const isRegisteredCommand = (this.commandRouter?.isRegisteredCommand(preliminaryText) ?? false) || hasPendingCommand;
+    const shouldRespond = this.gatekeeper.shouldRespond(
+      preliminaryIncoming,
+      isDirectlyAddressed,
+      isRegisteredCommand
+    );
 
     if (!shouldRespond) {
       return;
     }
 
-    // Handle media if image message with strict size limit (Max 5MB)
-    let media: IncomingMedia | undefined;
-    const imageMessage = unwrapped.imageMessage;
-    const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-
-    if (imageMessage) {
-      const declaredSize = Number(imageMessage.fileLength) || 0;
-      if (declaredSize > MAX_IMAGE_BYTES) {
-        this.logger.warn(`[Security] Dropping oversized image: ${declaredSize} bytes exceeds 5MB limit`);
-        return;
-      }
-
-      try {
-        const buffer = (await downloadMediaMessage(msg as any, 'buffer', {})) as Buffer;
-        if (buffer && buffer.length > 0) {
-          if (buffer.length > MAX_IMAGE_BYTES) {
-            this.logger.warn(`[Security] Dropping downloaded image: ${buffer.length} bytes exceeds 5MB limit`);
-            return;
-          }
-
-          media = {
-            buffer,
-            mimeType: imageMessage.mimetype || 'image/jpeg',
-            type: 'image',
-          };
-        }
-      } catch (err) {
-        this.logger.error(err, 'Failed to download image for agent handling');
-      }
+    // Download attached image/video/audio (including quoted media for registered commands)
+    const mediaResult = await this.extractIncomingMedia(
+      msg,
+      unwrapped,
+      quotedMessage,
+      isRegisteredCommand
+    );
+    if (mediaResult === 'oversized') {
+      return;
     }
+    const { media, secondaryMedia } = mediaResult;
 
     // Skip if message contains neither text nor media
     if (!processedText && !rawText && !media) {
@@ -302,6 +295,7 @@ export class MessageHandler {
       ...preliminaryIncoming,
       text: incomingText,
       media,
+      secondaryMedia,
       quotedMessage: quotedText ? { senderId: quotedSenderId, text: quotedText } : undefined,
     };
 
@@ -314,7 +308,8 @@ export class MessageHandler {
     }, 4500);
 
     try {
-      const response = await this.eiraAgent.handleMessage(incoming);
+      const commandResponse = await this.commandRouter?.tryExecute(incoming);
+      const response = commandResponse ?? (await this.eiraAgent.handleMessage(incoming));
 
       this.logger.debug(
         `[Chat] ${senderName} in ${chatId} [group: ${isGroup}]: "${(processedText || rawText).slice(0, 60)}"`
@@ -326,9 +321,11 @@ export class MessageHandler {
         this.logger.info(`[Tools] Executed: ${details.join(', ')}`);
       }
 
-      // 1. Send text reply first if present (split into natural bubbles with typing tempo)
+      // 1. Send text reply first if present (split conversational replies into natural bubbles)
       if (response.text && response.text.trim().length > 0) {
-        const bubbles = splitIntoBubbles(response.text, this.config.bot.locale);
+        const bubbles = commandResponse
+          ? [response.text]
+          : messagePacer.splitIntoBubbles(response.text, this.config.bot.locale);
 
         if (response.sources && response.sources.length > 0 && bubbles.length > 0) {
           const uniqueSources = response.sources.filter(
@@ -350,7 +347,7 @@ export class MessageHandler {
 
         for (let i = 1; i < bubbles.length; i++) {
           await sock.sendPresenceUpdate('composing', chatId).catch(() => {});
-          await this.sleepFn(computeTypingDelayMs(bubbles[i]));
+          await messagePacer.defaultSleep(messagePacer.computeTypingDelayMs(bubbles[i]));
           await sock.sendMessage(chatId, { text: bubbles[i], linkPreview: null });
         }
       } else if (!response.attachment) {
@@ -371,11 +368,40 @@ export class MessageHandler {
             : Buffer.from(response.attachment.payload);
 
         if (response.attachment.type === 'sticker') {
+          const audioPayload = response.attachment.metadata?.audio;
+          const isAnimated = Boolean(response.attachment.metadata?.isAnimated);
+          const seconds = Number(response.attachment.metadata?.seconds) || 6;
+
           this.logger.info(
-            `[Attachment] Sending sticker (${payloadBuffer.length} bytes) to ${chatId}`
+            `[Attachment] Sending sticker (${payloadBuffer.length} bytes, audio=${Buffer.isBuffer(audioPayload)}) to ${chatId}`
           );
           try {
-            await sock.sendMessage(chatId, { sticker: payloadBuffer });
+            if (Buffer.isBuffer(audioPayload)) {
+              try {
+                await sock.sendMessage(chatId, {
+                  sticker: payloadBuffer,
+                  audio: audioPayload,
+                  isAnimated,
+                  seconds,
+                  ptt: false,
+                  emojis: '🎵',
+                });
+              } catch (nativeErr) {
+                this.logger.warn(
+                  nativeErr,
+                  `[Attachment] Native audio sticker failed for ${chatId}, falling back to separate sticker + audio`
+                );
+                await sock.sendMessage(chatId, { sticker: payloadBuffer, isAnimated });
+                await sock.sendMessage(chatId, {
+                  audio: audioPayload,
+                  ptt: true,
+                  mimetype: 'audio/ogg; codecs=opus',
+                  seconds,
+                });
+              }
+            } else {
+              await sock.sendMessage(chatId, { sticker: payloadBuffer });
+            }
           } catch (stickerErr) {
             this.logger.error(stickerErr, `[Attachment] Failed to send sticker to ${chatId}`);
           }
@@ -422,6 +448,97 @@ export class MessageHandler {
       clearInterval(typingInterval);
       await sock.sendPresenceUpdate('paused', chatId).catch(() => {});
       this.cooldowns.finishRequest(chatId);
+    }
+  }
+
+  private async extractIncomingMedia(
+    msg: proto.IWebMessageInfo,
+    unwrapped: proto.IMessage,
+    quotedMessage: proto.IMessage | null | undefined,
+    allowCommandMedia: boolean
+  ): Promise<{ media?: IncomingMedia; secondaryMedia?: IncomingMedia } | 'oversized'> {
+    const directImage = unwrapped.imageMessage;
+    const quotedImage = allowCommandMedia
+      ? quotedMessage?.imageMessage || quotedMessage?.stickerMessage
+      : undefined;
+    const directVideo = allowCommandMedia ? unwrapped.videoMessage : undefined;
+    const quotedVideo = allowCommandMedia ? quotedMessage?.videoMessage : undefined;
+    const directAudio = allowCommandMedia ? unwrapped.audioMessage : undefined;
+    const quotedAudio = allowCommandMedia ? quotedMessage?.audioMessage : undefined;
+
+    const imageMsg = directImage || quotedImage;
+    const videoMsg = !imageMsg ? (directVideo || quotedVideo) : undefined;
+    const audioOnlyMsg = !imageMsg && !videoMsg ? (directAudio || quotedAudio) : undefined;
+    const primaryTarget = imageMsg || videoMsg || audioOnlyMsg;
+
+    if (!primaryTarget) {
+      return {};
+    }
+
+    const primaryType: IncomingMedia['type'] = imageMsg
+      ? 'image'
+      : videoMsg
+        ? 'video'
+        : 'audio';
+    const primarySource =
+      (imageMsg && !directImage) || (videoMsg && !directVideo) || (audioOnlyMsg && !directAudio)
+        ? ({ message: quotedMessage } as any)
+        : (msg as any);
+
+    const media = await this.downloadMediaWithLimit(primarySource, primaryTarget, primaryType);
+    if (media === 'oversized') {
+      return 'oversized';
+    }
+
+    // Support 1-step .asticker: image/video message replying to a quoted audio message
+    let secondaryMedia: IncomingMedia | undefined;
+    if ((imageMsg || videoMsg) && quotedAudio && allowCommandMedia) {
+      const secondaryResult = await this.downloadMediaWithLimit(
+        { message: quotedMessage } as any,
+        quotedAudio,
+        'audio'
+      );
+      if (secondaryResult === 'oversized') {
+        return 'oversized';
+      }
+      secondaryMedia = secondaryResult;
+    }
+
+    return { media, secondaryMedia };
+  }
+
+  private async downloadMediaWithLimit(
+    downloadSource: any,
+    mediaMeta: { fileLength?: number | Long | null; mimetype?: string | null },
+    type: IncomingMedia['type']
+  ): Promise<IncomingMedia | undefined | 'oversized'> {
+    const maxBytes = type === 'image' ? 5 * 1024 * 1024 : 15 * 1024 * 1024;
+    const declaredSize = Number(mediaMeta.fileLength) || 0;
+    if (declaredSize > maxBytes) {
+      this.logger.warn(`[Security] Dropping oversized ${type}: ${declaredSize} bytes`);
+      return 'oversized';
+    }
+
+    try {
+      const buffer = (await downloadMediaMessage(downloadSource, 'buffer', {})) as Buffer;
+      if (!buffer || buffer.length === 0) {
+        return undefined;
+      }
+      if (buffer.length > maxBytes) {
+        this.logger.warn(`[Security] Dropping downloaded ${type}: ${buffer.length} bytes`);
+        return 'oversized';
+      }
+
+      const defaultMime =
+        type === 'image' ? 'image/jpeg' : type === 'video' ? 'video/mp4' : 'audio/ogg';
+      return {
+        buffer,
+        mimeType: mediaMeta.mimetype || defaultMime,
+        type,
+      };
+    } catch (err) {
+      this.logger.error(err, `Failed to download incoming ${type}`);
+      return undefined;
     }
   }
 }

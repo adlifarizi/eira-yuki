@@ -64,6 +64,7 @@ const ConfigSchema = z.object({
       .default('id-ID')
       .refine(isValidLocale, { message: 'Invalid BCP 47 language tag / locale' }),
     aliases: z.array(z.string()).default(['eira', 'yuki']),
+    commandPrefix: z.string().min(1).default('.'),
     owners: BotOwnersSchema,
     systemInstruction: z.string().optional(),
   }),

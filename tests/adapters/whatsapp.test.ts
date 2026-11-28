@@ -1,7 +1,24 @@
 import { describe, it, expect, vi } from 'vitest';
-import { MessageHandler, sanitizeMessageText, CooldownTracker, resolveSenderPhone } from '../../src/adapters/whatsapp';
+
+vi.mock('@whiskeysockets/baileys', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@whiskeysockets/baileys')>();
+  return {
+    ...actual,
+    downloadMediaMessage: vi.fn().mockResolvedValue(Buffer.from('fake-media-bytes')),
+  };
+});
+
+import {
+  MessageHandler,
+  sanitizeMessageText,
+  CooldownTracker,
+  resolveSenderPhone,
+  createAudioStickerCommand,
+  createStickerCommand,
+} from '../../src/adapters/whatsapp';
+import * as messagePacer from '../../src/adapters/whatsapp/message-pacer';
 import { Config } from '../../src/config';
-import { EiraAgent } from '../../src/core';
+import { CommandRouter, EiraAgent } from '../../src/core';
 import { PermissionGatekeeper } from '../../src/core/gatekeeper';
 import pino from 'pino';
 
@@ -14,6 +31,7 @@ describe('MessageHandler Security & Integration', () => {
       timezone: 'Asia/Jakarta',
       locale: 'id-ID',
       aliases: ['eira', 'yuki'],
+      commandPrefix: '.',
       owners: {
         whatsapp: ['628111222'],
       },
@@ -548,13 +566,13 @@ describe('MessageHandler Security & Integration', () => {
     it('sends multi-bubble group replies with quoted only on the first bubble, composing pause between bubbles, and references on the last bubble', async () => {
       const mockAgent = {
         handleMessage: vi.fn().mockResolvedValue({
-          text: 'Baik, saya paham.\n\nIni informasi yang Anda minta.',
+          text: 'Baik, saya sudah memeriksa tautan dan catatan yang Anda kirimkan barusan.\n\nIni ringkasan informasi lengkap yang Anda minta untuk dicek lebih lanjut.',
           sources: [{ title: 'Example', url: 'https://example.com' }],
         }),
       } as unknown as EiraAgent;
 
-      const sleepSpy = vi.fn().mockResolvedValue(undefined);
-      const handler = new MessageHandler(logger, mockConfig, mockAgent, gatekeeper, sleepSpy);
+      const sleepSpy = vi.spyOn(messagePacer, 'defaultSleep').mockResolvedValue(undefined);
+      const handler = new MessageHandler(logger, mockConfig, mockAgent, gatekeeper);
       const sock = createMockSocket() as any;
 
       const groupMsg = {
@@ -569,19 +587,141 @@ describe('MessageHandler Security & Integration', () => {
       expect(sock.sendMessage).toHaveBeenNthCalledWith(
         1,
         'group123@g.us',
-        { text: 'Baik, saya paham.', linkPreview: null },
+        {
+          text: 'Baik, saya sudah memeriksa tautan dan catatan yang Anda kirimkan barusan.',
+          linkPreview: null,
+        },
         { quoted: groupMsg }
       );
       expect(sock.sendMessage).toHaveBeenNthCalledWith(
         2,
         'group123@g.us',
         {
-          text: 'Ini informasi yang Anda minta.\n\n*References:*\n1. Example (https://example.com)',
+          text: 'Ini ringkasan informasi lengkap yang Anda minta untuk dicek lebih lanjut.\n\n*References:*\n1. Example (https://example.com)',
           linkPreview: null,
         }
       );
       expect(sleepSpy).toHaveBeenCalledTimes(1);
+      sleepSpy.mockRestore();
       expect(sock.sendPresenceUpdate).toHaveBeenCalledWith('composing', 'group123@g.us');
+    });
+  });
+
+  describe('Prefix Command Routing (.sticker)', () => {
+    it('routes .sticker in group chat directly to CommandRouter without invoking EiraAgent', async () => {
+      const mockAgent = {
+        handleMessage: vi.fn(),
+      } as unknown as EiraAgent;
+
+      const mockConverter = {
+        imageToSticker: vi.fn().mockResolvedValue(Buffer.from('webp-sticker')),
+        videoToSticker: vi.fn(),
+      };
+      const router = new CommandRouter('.');
+      router.register(createStickerCommand(mockConverter, '.'));
+
+      const handler = new MessageHandler(
+        logger,
+        mockConfig,
+        mockAgent,
+        gatekeeper,
+        router
+      );
+      const sock = createMockSocket() as any;
+
+      await handler.handle(sock, {
+        key: { remoteJid: 'group123@g.us', participant: '628999888777@s.whatsapp.net', id: 'cmd-st' },
+        pushName: 'Cynthia',
+        message: {
+          extendedTextMessage: {
+            text: '.sticker',
+            contextInfo: {
+              quotedMessage: {
+                imageMessage: { mimetype: 'image/jpeg', fileLength: 1024 },
+              },
+            },
+          },
+        },
+      } as any);
+
+      expect(mockAgent.handleMessage).not.toHaveBeenCalled();
+      expect(mockConverter.imageToSticker).toHaveBeenCalledTimes(1);
+      expect(sock.sendMessage).toHaveBeenCalledWith('group123@g.us', {
+        sticker: Buffer.from('webp-sticker'),
+      });
+    });
+
+    it('sends native 1-bubble audio sticker for video with audio, with fallback on native error', async () => {
+      const mockAgent = {
+        handleMessage: vi.fn(),
+      } as unknown as EiraAgent;
+
+      const mockConverter = {
+        imageToSticker: vi.fn(),
+        videoToSticker: vi.fn(),
+        videoToAudioSticker: vi.fn().mockResolvedValue({
+          sticker: Buffer.from('webp-anim'),
+          audio: Buffer.from('ogg-opus'),
+          seconds: 4,
+        }),
+      };
+      const router = new CommandRouter('.');
+      router.register(createStickerCommand(mockConverter, '.'));
+      router.register(createAudioStickerCommand(mockConverter, '.'));
+
+      const handler = new MessageHandler(
+        logger,
+        mockConfig,
+        mockAgent,
+        gatekeeper,
+        router
+      );
+      const sock = createMockSocket() as any;
+
+      const videoCmdMsg = {
+        key: { remoteJid: 'group123@g.us', participant: '628999888777@s.whatsapp.net', id: 'cmd-ast' },
+        pushName: 'Cynthia',
+        message: {
+          videoMessage: { caption: '.asticker', mimetype: 'video/mp4', fileLength: 2048 },
+        },
+      } as any;
+
+      await handler.handle(sock, videoCmdMsg);
+
+      expect(sock.sendMessage).toHaveBeenCalledWith('group123@g.us', {
+        sticker: Buffer.from('webp-anim'),
+        audio: Buffer.from('ogg-opus'),
+        isAnimated: true,
+        seconds: 4,
+        ptt: false,
+        emojis: '🎵',
+      });
+
+      // Verify safe fallback when native send throws (different guest participant to avoid 3s rate limit)
+      sock.sendMessage.mockClear();
+      sock.sendMessage
+        .mockRejectedValueOnce(new Error('Native audioSticker unsupported'))
+        .mockResolvedValue({});
+
+      await handler.handle(sock, {
+        ...videoCmdMsg,
+        key: {
+          ...videoCmdMsg.key,
+          participant: '628999888778@s.whatsapp.net',
+          id: 'cmd-ast-fallback',
+        },
+      });
+
+      expect(sock.sendMessage).toHaveBeenCalledWith('group123@g.us', {
+        sticker: Buffer.from('webp-anim'),
+        isAnimated: true,
+      });
+      expect(sock.sendMessage).toHaveBeenCalledWith('group123@g.us', {
+        audio: Buffer.from('ogg-opus'),
+        ptt: true,
+        mimetype: 'audio/ogg; codecs=opus',
+        seconds: 4,
+      });
     });
   });
 });

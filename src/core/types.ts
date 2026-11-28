@@ -61,6 +61,8 @@ export interface IncomingMessage {
   text: string;
   /** Optional media attachment if the user sent an image, audio, or video. */
   media?: IncomingMedia;
+  /** Optional secondary media (e.g. quoted audio paired with an image/video command). */
+  secondaryMedia?: IncomingMedia;
   /** Context of any quoted or replied message. */
   quotedMessage?: QuotedMessage;
   /** Unix timestamp in milliseconds when the message was received. */

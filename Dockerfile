@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
+COPY patches ./patches
 RUN npm install
 
 COPY . .
@@ -20,14 +21,16 @@ FROM node:22-slim
 
 WORKDIR /app
 
-# Install runtime dependencies, Chromium for headless SPA rendering, & compile native addons
+# Install runtime dependencies, Chromium for headless SPA rendering, FFmpeg for animated stickers, & compile native addons
 COPY package*.json ./
+COPY patches ./patches
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3 \
     tzdata \
     chromium \
     fonts-liberation \
+    ffmpeg \
     && npm ci --omit=dev \
     && apt-get purge -y --auto-remove build-essential python3 \
     && apt-get clean \

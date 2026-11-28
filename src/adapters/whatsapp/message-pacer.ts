@@ -1,5 +1,5 @@
 const DEFAULT_MAX_BUBBLES = 3;
-const MIN_SENTENCE_SPLIT_LENGTH = 80;
+const MIN_SPLIT_LENGTH = 140;
 const MIN_TYPING_DELAY_MS = 600;
 const MAX_TYPING_DELAY_MS = 1500;
 const BASE_TYPING_DELAY_MS = 450;
@@ -19,7 +19,14 @@ export function splitIntoBubbles(
   if (!trimmed) return [];
 
   const limit = Math.max(1, maxBubbles);
-  if (limit === 1) return [trimmed];
+  if (limit === 1 || trimmed.length <= MIN_SPLIT_LENGTH) {
+    return [trimmed];
+  }
+
+  // Keep lists and URLs intact in a single bubble.
+  if (/^\s*(?:[-*•▸]|\d+\.)\s+/m.test(trimmed) || /https?:\/\//i.test(trimmed)) {
+    return [trimmed];
+  }
 
   const paragraphs = trimmed
     .split(/\n{2,}/)
@@ -28,15 +35,6 @@ export function splitIntoBubbles(
 
   if (paragraphs.length > 1) {
     return capSegments(paragraphs, limit, '\n\n');
-  }
-
-  // Keep lists, URLs, and short replies together as a single bubble.
-  if (
-    trimmed.length <= MIN_SENTENCE_SPLIT_LENGTH ||
-    /^\s*(?:[-*]|\d+\.)\s+/m.test(trimmed) ||
-    /https?:\/\//i.test(trimmed)
-  ) {
-    return [trimmed];
   }
 
   const sentences = segmentSentences(trimmed, locale);

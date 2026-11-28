@@ -13,6 +13,9 @@ bot:
     - "eira"
     - "yuki"
 
+  # Prefix for deterministic bot commands (e.g. ".sticker", ".help")
+  commandPrefix: "."
+
   # Bot owners configured per adapter platform (e.g. whatsapp, discord, telegram, api)
   owners:
     # WhatsApp phone numbers of the bot owners (without '+' or leading zero, e.g. "628123456789")
